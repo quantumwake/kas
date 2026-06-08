@@ -150,11 +150,7 @@ class ConsoleIO:
 class SubagentIO:
     """Routes a subagent's turn through the parent IO, visually demoted.
 
-    All subagent output renders as dim/thinking-style so the main thread's
-    own text stays visually primary; confirmations still go to the user;
-    steering stays with the main thread.
-    """
-
+    Confirmations still go to the user; steering stays with the main thread.
     Full subagent output (thinking/text/tools) is CAPTURED into self.buffer for
     later inspection (the TUI's /subagent drill-in); only compact markers leak
     to the parent's main view so it stays readable.

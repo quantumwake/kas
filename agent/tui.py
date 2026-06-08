@@ -28,8 +28,8 @@ from agent import main as core
 from scripts.select_model import downloaded_models
 
 PLACEHOLDER = "task or steering · / for commands · exit"
-COMMANDS = ["/yolo", "/rag", "/rag enable", "/rag disable", "/status", "/compact",
-            "/stop", "/pause", "/model", "exit"]
+COMMANDS = ["/yolo", "/rag", "/rag enable", "/rag disable", "/subagents", "/status",
+            "/compact", "/stop", "/pause", "/model", "exit"]
 
 
 class ModelSelect(ModalScreen):
@@ -526,8 +526,8 @@ class AgentApp(App):
             else:
                 self.body_write(
                     Text(
-                        "commands: /yolo  /rag [enable|disable]  /status  /compact  /model [n]  "
-                        "/stop (Esc)  /pause (^P) · exit",
+                        "commands: /yolo  /rag [enable|disable]  /subagents  /subagent <n>  /status  "
+                        "/compact  /model  /stop (Esc)  /pause (^P) · exit",
                         style="yellow",
                     )
                 )
@@ -632,6 +632,9 @@ class AgentApp(App):
             line = f"{self.model} · yolo {'ON' if self.runner.yolo else 'off'} · {work}"
             if queued:
                 line += f" · steering queued: {queued}"
+            if self.subagents:
+                running = sum(1 for s in self.subagents if s.status == "running")
+                line += f" · subagents: {len(self.subagents)}" + (f" ({running} running)" if running else "")
             try:
                 self.call_from_thread(self.update_status, line)
             except Exception:
