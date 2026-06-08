@@ -1,0 +1,20 @@
+.*.log
+# python
+.venv/
+__pycache__/
+*.pyc
+
+# server runtime
+server.log
+.server.pid
+
+# local experiment artifacts (agent test runs)
+asteroids-game/
+
+.DS_Store
+
+# agent session archives (compaction logs)
+.agent/
+
+# editor
+.idea/
