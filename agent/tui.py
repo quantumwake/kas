@@ -68,6 +68,37 @@ class ModelSelect(ModalScreen):
         self.dismiss(None)
 
 
+class SubagentView(ModalScreen):
+    """Scrollable read-only view of one subagent's captured transcript."""
+
+    CSS = """
+    SubagentView { align: center middle; }
+    #sv-box { width: 90%; height: 85%; background: #0a0500; border: round #ff9d00; padding: 1 2; }
+    #sv-title { color: #ffb000; text-style: bold; padding-bottom: 1; }
+    SubagentView RichLog { background: #0a0500; color: #cc7000; }
+    """
+    BINDINGS = [Binding("escape", "dismiss", "close")]
+
+    def __init__(self, sub) -> None:
+        super().__init__()
+        self._sub = sub
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="sv-box"):
+            yield Static(f"subagent[{self._sub.n}] · {self._sub.status} · {self._sub.label}  (Esc to close)",
+                         id="sv-title")
+            log = RichLog(wrap=True, markup=False, highlight=False)
+            yield log
+
+    def on_mount(self) -> None:
+        log = self.query_one(RichLog)
+        for line in (self._sub.buffer or ["(no captured output)"]):
+            log.write(Text(line, style="#cc7000"))
+
+    def action_dismiss(self) -> None:
+        self.dismiss(None)
+
+
 class PasteInput(Input):
     """Single-line Input that doesn't shred multiline paste.
 
@@ -192,6 +223,13 @@ class TuiIO:
 
     def clear_abort(self) -> None:
         self.abort.clear()
+
+    # subagent lifecycle → app registry (for /subagents + drill-in)
+    def subagent_started(self, sub) -> None:
+        self._ui(self.app.register_subagent, sub)
+
+    def subagent_finished(self, sub, ok: bool) -> None:
+        self._ui(self.app.refresh_status)
 
 
 class AgentApp(App):

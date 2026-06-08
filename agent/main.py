@@ -155,8 +155,29 @@ class SubagentIO:
     steering stays with the main thread.
     """
 
-    def __init__(self, parent) -> None:
+    Full subagent output (thinking/text/tools) is CAPTURED into self.buffer for
+    later inspection (the TUI's /subagent drill-in); only compact markers leak
+    to the parent's main view so it stays readable.
+    """
+
+    def __init__(self, parent, label: str = "", n: int = 0) -> None:
         self.parent = parent
+        self.label = label
+        self.n = n
+        self.status = "running"
+        self.buffer: list[str] = []  # captured transcript lines
+        self._line = ""
+
+    def _cap(self, text: str) -> None:
+        self._line += text
+        while "\n" in self._line:
+            ln, self._line = self._line.split("\n", 1)
+            self.buffer.append(ln)
+
+    def _flush(self) -> None:
+        if self._line:
+            self.buffer.append(self._line)
+            self._line = ""
 
     @property
     def last_decode_tps(self) -> float:
@@ -166,19 +187,22 @@ class SubagentIO:
         self.parent.stream_started()
 
     def stream_finished(self, usage):
+        self._flush()
         self.parent.stream_finished(usage)
 
     def delta(self, kind: str, text: str):
-        self.parent.delta("thinking", text)  # demote everything to dim
+        self._cap(text)  # full detail → buffer only (keeps the main view clean)
 
     def tool_call(self, name: str, args: dict):
-        self.parent.tool_call(f"sub:{name}", args)
+        self._flush()
+        self.buffer.append(f"→ {name}({json.dumps(args, ensure_ascii=False)[:160]})")
+        self.parent.tool_call(f"sub[{self.n}]:{name}", args)  # compact line in main view
 
     def tool_result(self, output: str, is_error: bool):
-        self.parent.tool_result(output, is_error)
+        self.buffer.append(("✗ " if is_error else "✓ ") + (output[:400]))
 
     def notice(self, text: str):
-        self.parent.notice(f"[sub] {text}")
+        self.buffer.append(text)
 
     def confirm(self, command: str):
         return self.parent.confirm(command)
@@ -212,9 +236,13 @@ def run_subagent(
     if args.get("report"):
         task += f"\n\nYour final reply MUST contain: {args['report']}"
     _subagent_seq += 1
-    thread = f"sub-{_subagent_seq}"  # own KV-cache slot + memo, isolated from main
-    io.notice(f"[subagent ▶ {task[:100].splitlines()[0]}…]")
-    sub_io = SubagentIO(io)
+    n = _subagent_seq
+    thread = f"sub-{n}"  # own KV-cache slot + memo, isolated from main
+    label = task[:100].splitlines()[0]
+    io.notice(f"[subagent[{n}] ▶ {label}…]")
+    sub_io = SubagentIO(io, label=label, n=n)
+    if hasattr(io, "subagent_started"):
+        io.subagent_started(sub_io)
     messages: list = [{"role": "user", "content": task}]
     try:
         agent_turn(
@@ -230,6 +258,9 @@ def run_subagent(
             thread=thread,
         )
     except Exception as exc:
+        sub_io.status = "error"
+        if hasattr(io, "subagent_finished"):
+            io.subagent_finished(sub_io, False)
         return f"subagent failed: {type(exc).__name__}: {exc}", True
     final = ""
     if messages and messages[-1].get("role") == "assistant":
@@ -240,7 +271,12 @@ def run_subagent(
             for b in blocks
             if (getattr(b, "type", None) or b.get("type")) == "text"
         ).strip()
-    io.notice("[subagent ✔ done]")
+    sub_io.status = "done" if final else "empty"
+    if final:
+        sub_io.buffer.append(f"[report] {final}")
+    io.notice(f"[subagent[{n}] ✔ done]")
+    if hasattr(io, "subagent_finished"):
+        io.subagent_finished(sub_io, bool(final))
     if not final:
         return "subagent finished without a final report", True
     return _truncate(final), False
