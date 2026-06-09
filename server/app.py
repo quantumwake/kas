@@ -289,6 +289,9 @@ def _run(req: MessagesRequest, thread: str = "main") -> Iterator[dict[str, Any]]
         stop_sequences=req.stop_sequences,
         cache_key=thread,
     ):
+        if chunk.ping:
+            yield {"kind": "ping"}
+            continue
         if chunk.done:
             usage["input_tokens"] = chunk.prompt_tokens or usage["input_tokens"]
             usage["output_tokens"] = chunk.generation_tokens
@@ -329,6 +332,8 @@ def _complete(req: MessagesRequest, thread: str = "main") -> JSONResponse:
     content: list[dict[str, Any]] = []
     stop_reason, usage = "end_turn", {"input_tokens": 0, "output_tokens": 0}
     for ev in _run(req, thread):
+        if ev["kind"] == "ping":
+            continue  # heartbeat only; nothing to aggregate
         if ev["kind"] == "text":
             if content and content[-1]["type"] == "text":
                 content[-1]["text"] += ev["text"]
@@ -407,7 +412,9 @@ def _stream(req: MessagesRequest, thread: str = "main") -> Iterator[str]:
 
     stop_reason, usage = "end_turn", {"input_tokens": 0, "output_tokens": 0}
     for ev in _run(req, thread):
-        if ev["kind"] in ("text", "thinking"):
+        if ev["kind"] == "ping":
+            yield _sse("ping", {"type": "ping"})
+        elif ev["kind"] in ("text", "thinking"):
             if block_open != ev["kind"]:
                 yield from close_block()
                 start_block = (

@@ -27,12 +27,17 @@ KV_GROUP_SIZE = 64
 MAX_CACHE_SLOTS = int(os.environ.get("KAS_CACHE_SLOTS", "4"))
 # Below this, decode is fast anyway — keep full precision.
 QUANTIZED_KV_START = int(os.environ.get("KAS_KV_START", "8192"))
+# Emit a keep-alive chunk if the worker produces nothing for this long, so a
+# long prefill (or a slow first token) never leaves the HTTP stream silent and
+# trips the client's read timeout.
+PING_SECONDS = float(os.environ.get("KAS_PING_SECONDS", "5"))
 
 
 @dataclass
 class GenChunk:
     text: str
     done: bool = False
+    ping: bool = False  # keep-alive heartbeat (no content), not a real token
     prompt_tokens: int = 0  # full prompt length (for usage)
     cached_tokens: int = 0  # prefix served from the KV cache
     generation_tokens: int = 0
@@ -177,7 +182,13 @@ class Engine:
         self._jobs.put((out_q, cancel, produce))
         try:
             while True:
-                kind, payload = out_q.get()
+                try:
+                    kind, payload = out_q.get(timeout=PING_SECONDS)
+                except queue.Empty:
+                    # worker still busy (e.g. long prefill) — heartbeat so the
+                    # stream keeps flowing and read timeouts don't fire.
+                    yield GenChunk(text="", ping=True)
+                    continue
                 if kind == "item":
                     yield payload
                 elif kind == "error":

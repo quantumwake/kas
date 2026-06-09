@@ -1410,12 +1410,19 @@ def serve_main(argv: list[str]) -> None:
         return
     if a.status:
         p = pid()
-        if p:
-            try:
-                m = httpx.get(base + "/v1/models", timeout=2).json()["data"][0]["id"]
-            except Exception:
-                m = "(loading)"
+        # Probe the port too — a server started another way (make start, bare
+        # kas-server) won't be in our pidfile but is still serving.
+        try:
+            m = httpx.get(base + "/v1/models", timeout=2).json()["data"][0]["id"]
+            up = True
+        except Exception:
+            m, up = None, False
+        if p and up:
             print(f"running (pid {p}) · {m} · {base}")
+        elif up:
+            print(f"running (not daemon-managed) · {m} · {base}")
+        elif p:
+            print(f"process {p} alive but not responding on {base} (still loading?)")
         else:
             print("not running")
         return
@@ -1507,7 +1514,15 @@ def main() -> None:
         print(f"\nresume with: python -m agent.main --resume <SESSION_ID> --workdir {workdir}")
         return
 
-    client = anthropic.Anthropic(base_url=BASE_URL, api_key="local", max_retries=0, timeout=600)
+    # Resilient transport: the server pings every few seconds during long
+    # prefills so the stream never goes silent (httpx read timeout is per-gap,
+    # not total), and max_retries reconnects on a dropped connection.
+    client = anthropic.Anthropic(
+        base_url=BASE_URL,
+        api_key="local",
+        max_retries=3,
+        timeout=httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0),
+    )
 
     messages: list = []
     store = None
