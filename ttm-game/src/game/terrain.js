@@ -62,8 +62,8 @@ class Noise {
 export function generateMap(seed = 42) {
   const noise = new Noise(seed);
   const waterNoise = new Noise(seed + 1000);
-  const { MAP_SIZE, TERRAIN } = require('./constants.js');
-  const mapSize = 512;
+  import { MAP_SIZE, TERRAIN } from './constants.js';
+  const mapSize = MAP_SIZE;
 
   const terrain = new Uint8Array(mapSize * mapSize);
   const features = new Uint8Array(mapSize * mapSize); // trees, houses
