@@ -1269,7 +1269,16 @@ def agent_turn(
                                 partial.append(block)
                 if not aborted:
                     response = stream.get_final_message()
-        except (anthropic.APITimeoutError, anthropic.APIConnectionError) as exc:
+        except (
+            anthropic.APITimeoutError,
+            anthropic.APIConnectionError,
+            # A read timeout (or server-side disconnect) raised mid-SSE-iteration
+            # isn't always wrapped by the SDK — the raw httpx error escapes here.
+            # Treat it the same as a dropped connection so it reconnects instead
+            # of leaking to the TUI's generic error branch.
+            httpx.TimeoutException,
+            httpx.RemoteProtocolError,
+        ) as exc:
             io.stream_finished(None)
             if partial or reconnects >= 3:
                 raise  # content already shown, or out of retries — give up
