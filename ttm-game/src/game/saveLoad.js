@@ -1,6 +1,7 @@
-import { ACTIONS, createNewGame } from './state.js';
+// ===== SAVE / LOAD SYSTEM =====
 
-// Convert state to save data (only serializable parts)
+import { createNewGame, ACTIONS } from './state.js';
+
 export function saveGame(state, name = 'AutoSave') {
   const saveData = {
     version: 1,
@@ -9,11 +10,20 @@ export function saveGame(state, name = 'AutoSave') {
     dateTicks: state.dateTicks,
     money: state.money,
     loan: state.loan,
+    maxLoan: state.maxLoan,
+    interestRate: state.interestRate,
+    targetWealth: state.targetWealth,
+    costMult: state.costMult,
     monthlyIncome: state.monthlyIncome,
     monthlyExpenses: state.monthlyExpenses,
     monthlyProfit: state.monthlyProfit,
     gameSpeed: state.gameSpeed,
     paused: state.paused,
+    difficulty: state.difficulty,
+    selectedTool: state.selectedTool,
+    zoom: state.zoom,
+    cameraX: state.cameraX,
+    cameraY: state.cameraY,
     terrain: Array.from(state.terrain),
     features: Array.from(state.features),
     surface: Array.from(state.surface),
@@ -22,6 +32,8 @@ export function saveGame(state, name = 'AutoSave') {
     industries: state.industries,
     docks: state.docks,
     airports: state.airports,
+    stations: state.stations,
+    nextStationId: state.nextStationId,
     vehicles: state.vehicles,
     nextVehicleId: state.nextVehicleId,
     reputation: state.reputation,
@@ -29,14 +41,12 @@ export function saveGame(state, name = 'AutoSave') {
     totalCargo: state.totalCargo,
   };
 
-  // Save to localStorage
   const saves = getSavedGames();
   const existing = saves.findIndex(s => s.name === name);
-  if (existing >= 0) {
-    saves[existing] = saveData;
-  } else {
-    saves.push(saveData);
-  }
+  if (existing >= 0) saves[existing] = saveData;
+  else saves.push(saveData);
+  // Keep max 10 saves
+  if (saves.length > 10) saves.splice(0, saves.length - 10);
   localStorage.setItem('ttm_saves', JSON.stringify(saves));
 
   return saveData;
@@ -54,28 +64,38 @@ export function saveGameAsFile(state, name = 'MySave') {
 }
 
 export function loadGame(saveData) {
-  // Reconstruct state from save data
-  const newState = createNewGame(0); // get structure
+  const base = createNewGame(0); // get structure
 
   return {
-    ...newState,
+    ...base,
     date: new Date(saveData.date),
     dateTicks: saveData.dateTicks,
     money: saveData.money,
     loan: saveData.loan,
+    maxLoan: saveData.maxLoan,
+    interestRate: saveData.interestRate,
+    targetWealth: saveData.targetWealth,
+    costMult: saveData.costMult,
     monthlyIncome: saveData.monthlyIncome,
     monthlyExpenses: saveData.monthlyExpenses,
     monthlyProfit: saveData.monthlyProfit || [],
     gameSpeed: saveData.gameSpeed,
     paused: saveData.paused,
+    difficulty: saveData.difficulty || 'normal',
+    selectedTool: saveData.selectedTool,
+    zoom: saveData.zoom,
+    cameraX: saveData.cameraX,
+    cameraY: saveData.cameraY,
     terrain: new Uint8Array(saveData.terrain),
     features: new Uint8Array(saveData.features),
     surface: new Uint8Array(saveData.surface),
     stationMap: new Uint8Array(saveData.stationMap),
-    towns: saveData.towns || newState.towns,
-    industries: saveData.industries || newState.industries,
-    docks: saveData.docks || newState.docks,
-    airports: saveData.airports || newState.airports,
+    towns: saveData.towns || base.towns,
+    industries: saveData.industries || base.industries,
+    docks: saveData.docks || base.docks,
+    airports: saveData.airports || base.airports,
+    stations: saveData.stations || base.stations,
+    nextStationId: saveData.nextStationId || 0,
     vehicles: saveData.vehicles || [],
     nextVehicleId: saveData.nextVehicleId || 0,
     reputation: saveData.reputation || 50,
@@ -83,6 +103,9 @@ export function loadGame(saveData) {
     totalCargo: saveData.totalCargo || 0,
     showPanel: null,
     notifications: [],
+    buildMode: null,
+    selectedVehicle: null,
+    hoveredTile: null,
   };
 }
 
@@ -93,9 +116,7 @@ export function loadGameFromFile(file) {
       try {
         const saveData = JSON.parse(e.target.result);
         resolve(loadGame(saveData));
-      } catch (err) {
-        reject(err);
-      }
+      } catch (err) { reject(err); }
     };
     reader.onerror = reject;
     reader.readAsText(file);
@@ -106,9 +127,7 @@ export function getSavedGames() {
   try {
     const data = localStorage.getItem('ttm_saves');
     return data ? JSON.parse(data) : [];
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 
 export function deleteSave(name) {
