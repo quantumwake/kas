@@ -1,11 +1,8 @@
-// ===== GAME CONSTANTS =====
+// ===== TRANSPORT TYCOON REMAKE - CONSTANTS =====
 
+// Map configuration
 export const MAP_SIZE = 1024;
-export const TILE_SIZE = 8; // base tile size for rendering
-
-export const START_YEAR = 1920;
-export const END_YEAR = 2020;
-export const GAME_DURATION_YEARS = END_YEAR - START_YEAR;
+export const TILE_SIZE = 8;
 
 // Terrain types
 export const TERRAIN = {
@@ -28,57 +25,143 @@ export const TERRAIN_COLORS = {
   [TERRAIN.TUNDRA]: '#b8c8d8',
 };
 
-export const TERRAIN_NAMES = {
-  [TERRAIN.GRASS]: 'Grassland',
-  [TERRAIN.WATER]: 'Water',
-  [TERRAIN.HILLS]: 'Hills',
-  [TERRAIN.MOUNTAIN]: 'Mountain',
-  [TERRAIN.DESERT]: 'Desert',
-  [TERRAIN.SNOW]: 'Snow',
-  [TERRAIN.TUNDRA]: 'Tundra',
-};
-
-// Surface types (what can be built on)
-export const SURFACE = {
+// Surface types (built infrastructure)
+export const TILE = {
   NONE: 0,
   ROAD: 1,
   RAIL: 2,
-  STATION_TRAIN: 3,
-  STATION_BUS: 4,
-  STATION_TRUCK: 5,
+  STATION: 3,
+  BUS_STOP: 4,
+  TRUCK_STOP: 5,
   AIRPORT: 6,
   DOCK: 7,
-  ROAD_STATION: 8,
+  BRIDGE: 8,
+  TUNNEL: 9,
+  SIGNAL: 10,
 };
 
-// Surface colors for rendering
 export const SURFACE_COLORS = {
-  [SURFACE.NONE]: null,
-  [SURFACE.ROAD]: '#555555',
-  [SURFACE.RAIL]: '#4a3728',
-  [SURFACE.STATION_TRAIN]: '#8b4513',
-  [SURFACE.STATION_BUS]: '#2e8b57',
-  [SURFACE.STATION_TRUCK]: '#b8860b',
-  [SURFACE.AIRPORT]: '#666666',
-  [SURFACE.DOCK]: '#8b6914',
-  [SURFACE.ROAD_STATION]: '#2e8b57',
+  [TILE.NONE]: null,
+  [TILE.ROAD]: '#555555',
+  [TILE.RAIL]: '#4a3728',
+  [TILE.STATION]: '#2196F3',
+  [TILE.BUS_STOP]: '#FF9800',
+  [TILE.TRUCK_STOP]: '#b8860b',
+  [TILE.AIRPORT]: '#666666',
+  [TILE.DOCK]: '#8B4513',
+  [TILE.BRIDGE]: '#999999',
+  [TILE.TUNNEL]: '#444444',
+  [TILE.SIGNAL]: '#ff0000',
 };
 
-// Industry types
-export const INDUSTRY_TYPES = [
-  { id: 0, name: 'Coal Mine', produces: 'Coal', color: '#333333', needsRoad: false },
-  { id: 1, name: 'Iron Ore Mine', produces: 'Iron Ore', color: '#8b4513', needsRoad: false },
-  { id: 2, name: 'Quarry', produces: 'Stone', color: '#888888', needsRoad: false },
-  { id: 3, name: 'Lumber Mill', produces: 'Wood', color: '#228b22', needsRoad: false },
-  { id: 4, name: 'Farm', produces: 'Food', color: '#9acd32', needsRoad: false },
-  { id: 5, name: 'Oil Well', produces: 'Oil', color: '#1a1a1a', needsRoad: false },
-  { id: 6, name: 'Steelworks', produces: 'Steel', consumes: 'Iron Ore', color: '#b22222', needsRoad: true },
-  { id: 7, name: 'Paper Mill', produces: 'Paper', consumes: 'Wood', color: '#f5f5dc', needsRoad: true },
-  { id: 8, name: 'Bakery', produces: 'Baked Goods', consumes: 'Food', color: '#daa520', needsRoad: true },
-  { id: 9, name: 'Car Factory', produces: 'Cars', consumes: 'Steel', color: '#4169e1', needsRoad: true },
-  { id: 10, name: 'Refinery', produces: 'Fuel', consumes: 'Oil', color: '#dc143c', needsRoad: true },
-  { id: 11, name: 'Spaceport', produces: 'Satellite', consumes: 'Cars', color: '#9370db', needsRoad: true },
-];
+// Feature types (objects on tiles)
+export const FEATURE = {
+  NONE: 0,
+  TREE: 1,
+  HOUSE: 2,
+  INDUSTRY: 3,
+};
+
+// Tool / Build mode
+export const TOOLS = {
+  CURSOR: 0,
+  DEMOLISH: 1,
+  BUILD_ROAD: 2,
+  BUILD_RAIL: 3,
+  BUILD_STATION: 4,
+  BUILD_BUS_STOP: 5,
+  BUILD_TRUCK_STOP: 6,
+  BUILD_AIRPORT: 7,
+  BUILD_DOCK: 8,
+  BUILD_BRIDGE: 9,
+  TERRAIN_LOWER: 10,
+  TERRAIN_RAISE: 11,
+  FILL_WATER: 12,
+  CREATE_WATER: 13,
+  PLANT_TREES: 14,
+  SIGNAL: 15,
+};
+
+export const TOOL_NAMES = {
+  [TOOLS.CURSOR]: 'Select',
+  [TOOLS.DEMOLISH]: 'Demolish',
+  [TOOLS.BUILD_ROAD]: 'Road',
+  [TOOLS.BUILD_RAIL]: 'Rail',
+  [TOOLS.BUILD_STATION]: 'Station',
+  [TOOLS.BUILD_BUS_STOP]: 'Bus Stop',
+  [TOOLS.BUILD_TRUCK_STOP]: 'Truck Stop',
+  [TOOLS.BUILD_AIRPORT]: 'Airport',
+  [TOOLS.BUILD_DOCK]: 'Dock',
+  [TOOLS.BUILD_BRIDGE]: 'Bridge',
+  [TOOLS.TERRAIN_LOWER]: 'Lower Land',
+  [TOOLS.TERRAIN_RAISE]: 'Raise Land',
+  [TOOLS.FILL_WATER]: 'Fill Water',
+  [TOOLS.CREATE_WATER]: 'Create Water',
+  [TOOLS.PLANT_TREES]: 'Plant Trees',
+  [TOOLS.SIGNAL]: 'Signal',
+};
+
+export const TOOL_ICONS = {
+  [TOOLS.CURSOR]: '🔍',
+  [TOOLS.DEMOLISH]: '💥',
+  [TOOLS.BUILD_ROAD]: '🛣️',
+  [TOOLS.BUILD_RAIL]: '🛤️',
+  [TOOLS.BUILD_STATION]: '🚉',
+  [TOOLS.BUILD_BUS_STOP]: '🚌',
+  [TOOLS.BUILD_TRUCK_STOP]: '🚛',
+  [TOOLS.BUILD_AIRPORT]: '✈️',
+  [TOOLS.BUILD_DOCK]: '⚓',
+  [TOOLS.BUILD_BRIDGE]: '🌉',
+  [TOOLS.TERRAIN_LOWER]: '⬇️',
+  [TOOLS.TERRAIN_RAISE]: '⬆️',
+  [TOOLS.FILL_WATER]: '🧱',
+  [TOOLS.CREATE_WATER]: '💧',
+  [TOOLS.PLANT_TREES]: '🌲',
+  [TOOLS.SIGNAL]: '🚦',
+};
+
+// Build costs per tile
+export const BUILD_COSTS = {
+  [TOOLS.DEMOLISH]: 100,
+  [TOOLS.BUILD_ROAD]: 50,
+  [TOOLS.BUILD_RAIL]: 150,
+  [TOOLS.BUILD_STATION]: 1500,
+  [TOOLS.BUILD_BUS_STOP]: 500,
+  [TOOLS.BUILD_TRUCK_STOP]: 500,
+  [TOOLS.BUILD_AIRPORT]: 50000,
+  [TOOLS.BUILD_DOCK]: 10000,
+  [TOOLS.BUILD_BRIDGE]: 200,
+  [TOOLS.TERRAIN_LOWER]: 200,
+  [TOOLS.TERRAIN_RAISE]: 200,
+  [TOOLS.FILL_WATER]: 300,
+  [TOOLS.CREATE_WATER]: 300,
+  [TOOLS.PLANT_TREES]: 5,
+  [TOOLS.SIGNAL]: 100,
+};
+
+// Station sizes (in tiles)
+export const STATION_SIZES = {
+  [TOOLS.BUILD_STATION]: 8,     // train station: 8 tiles long
+  [TOOLS.BUILD_BUS_STOP]: 2,     // bus stop: 2 tiles
+  [TOOLS.BUILD_TRUCK_STOP]: 2,   // truck stop: 2 tiles
+  [TOOLS.BUILD_AIRPORT]: 11,     // airport: 11x11
+  [TOOLS.BUILD_DOCK]: 3,         // dock: 3 tiles
+};
+
+// Vehicle classes
+export const VEHICLE_CLASSES = {
+  TRAIN: 'train',
+  ROAD: 'road',
+  AIR: 'air',
+  WATER: 'water',
+};
+
+export const VEHICLE_CLASS_SURFACE = {
+  [VEHICLE_CLASSES.TRAIN]: TILE.RAIL,
+  [VEHICLE_CLASSES.ROAD]: TILE.ROAD,
+  [VEHICLE_CLASSES.AIR]: TILE.AIRPORT,
+  [VEHICLE_CLASSES.WATER]: TILE.DOCK,
+};
 
 // Cargo types
 export const CARGO_TYPES = [
@@ -98,123 +181,73 @@ export const CARGO_TYPES = [
   { id: 13, name: 'Satellite', color: '#9370db', value: 10 },
 ];
 
-// Vehicle types
-export const VEHICLE_CLASS = {
-  RAIL: 'rail',
-  ROAD: 'road',
-  AIR: 'air',
-  WATER: 'water',
-};
+// Industry definitions
+export const INDUSTRY_TYPES = [
+  { id: 0, name: 'Coal Mine', produces: 'Coal', producesCargoId: 2, minYear: 1920, color: '#333333' },
+  { id: 1, name: 'Iron Ore Mine', produces: 'Iron Ore', producesCargoId: 3, minYear: 1920, color: '#8b4513' },
+  { id: 2, name: 'Quarry', produces: 'Stone', producesCargoId: 4, minYear: 1920, color: '#888888' },
+  { id: 3, name: 'Lumber Mill', produces: 'Wood', producesCargoId: 5, minYear: 1920, color: '#228b22' },
+  { id: 4, name: 'Farm', produces: 'Food', producesCargoId: 6, minYear: 1920, color: '#9acd32' },
+  { id: 5, name: 'Oil Well', produces: 'Oil', producesCargoId: 7, minYear: 1920, color: '#1a1a1a' },
+  { id: 6, name: 'Steelworks', produces: 'Steel', producesCargoId: 8, consumes: 'Iron Ore', consumesCargoId: 3, minYear: 1930, color: '#b22222' },
+  { id: 7, name: 'Paper Mill', produces: 'Paper', producesCargoId: 9, consumes: 'Wood', consumesCargoId: 5, minYear: 1930, color: '#f5f5dc' },
+  { id: 8, name: 'Bakery', produces: 'Baked Goods', producesCargoId: 10, consumes: 'Food', consumesCargoId: 6, minYear: 1935, color: '#daa520' },
+  { id: 9, name: 'Car Factory', produces: 'Cars', producesCargoId: 11, consumes: 'Steel', consumesCargoId: 8, minYear: 1950, color: '#4169e1' },
+  { id: 10, name: 'Refinery', produces: 'Fuel', producesCargoId: 12, consumes: 'Oil', consumesCargoId: 7, minYear: 1940, color: '#dc143c' },
+  { id: 11, name: 'Spaceport', produces: 'Satellite', producesCargoId: 13, consumes: 'Cars', consumesCargoId: 11, minYear: 1969, color: '#9370db' },
+];
 
 // Vehicle definitions
-export const VEHICLES = [
-  // Trains
-  { id: 0, name: 'Steam Locomotive', class: VEHICLE_CLASS.RAIL, type: 'engine', speed: 60, power: 200, cost: 8000, capacity: 0, reliability: 80, year: 1920, color: '#8b4513', length: 1 },
-  { id: 1, name: 'Diesel Locomotive', class: VEHICLE_CLASS.RAIL, type: 'engine', speed: 100, power: 350, cost: 25000, capacity: 0, reliability: 90, year: 1935, color: '#228b22', length: 1 },
-  { id: 2, name: 'Electric Locomotive', class: VEHICLE_CLASS.RAIL, type: 'engine', speed: 140, power: 500, cost: 60000, capacity: 0, reliability: 95, year: 1950, color: '#4169e1', length: 1 },
-  { id: 3, name: 'High Speed Train', class: VEHICLE_CLASS.RAIL, type: 'engine', speed: 220, power: 800, cost: 150000, capacity: 0, reliability: 98, year: 1965, color: '#dc143c', length: 1 },
-  { id: 4, name: 'Passenger Car', class: VEHICLE_CLASS.RAIL, type: 'wagon', speed: 0, power: 0, cost: 4000, capacity: 32, cargo: [0], reliability: 85, year: 1920, color: '#228b22', length: 1 },
-  { id: 5, name: 'Cargo Wagon', class: VEHICLE_CLASS.RAIL, type: 'wagon', speed: 0, power: 0, cost: 3000, capacity: 20, cargo: [2,3,4,5,6,7,8,9,10,11,12,13], reliability: 85, year: 1920, color: '#8b4513', length: 1 },
-  { id: 6, name: 'Mail Car', class: VEHICLE_CLASS.RAIL, type: 'wagon', speed: 0, power: 0, cost: 3500, capacity: 15, cargo: [1], reliability: 85, year: 1920, color: '#ffff00', length: 1 },
-
-  // Road vehicles
-  { id: 7, name: 'Minibus', class: VEHICLE_CLASS.ROAD, type: 'single', speed: 50, power: 0, cost: 2000, capacity: 12, cargo: [0], reliability: 75, year: 1920, color: '#ff6347', length: 1 },
-  { id: 8, name: 'Bus', class: VEHICLE_CLASS.ROAD, type: 'single', speed: 65, power: 0, cost: 5000, capacity: 28, cargo: [0], reliability: 80, year: 1930, color: '#228b22', length: 1 },
-  { id: 9, name: 'Coach', class: VEHICLE_CLASS.ROAD, type: 'single', speed: 80, power: 0, cost: 12000, capacity: 60, cargo: [0], reliability: 85, year: 1945, color: '#4169e1', length: 1 },
-  { id: 10, name: 'Cargo Truck', class: VEHICLE_CLASS.ROAD, type: 'single', speed: 55, power: 0, cost: 4000, capacity: 10, cargo: [2,3,4,5,6,7,8,9,10,11,12], reliability: 75, year: 1920, color: '#8b4513', length: 1 },
-  { id: 11, name: 'Long Distance Truck', class: VEHICLE_CLASS.ROAD, type: 'single', speed: 70, power: 0, cost: 8000, capacity: 16, cargo: [2,3,4,5,6,7,8,9,10,11,12], reliability: 80, year: 1940, color: '#b8860b', length: 1 },
-  { id: 12, name: 'Mail Van', class: VEHICLE_CLASS.ROAD, type: 'single', speed: 55, power: 0, cost: 3000, capacity: 8, cargo: [1], reliability: 75, year: 1920, color: '#ffff00', length: 1 },
-
-  // Aircraft
-  { id: 13, name: 'Cessna', class: VEHICLE_CLASS.AIR, type: 'single', speed: 200, power: 0, cost: 15000, capacity: 8, cargo: [0], reliability: 85, year: 1935, color: '#ffffff', length: 1 },
-  { id: 14, name: 'DC-3', class: VEHICLE_CLASS.AIR, type: 'single', speed: 250, power: 0, cost: 45000, capacity: 24, cargo: [0], reliability: 90, year: 1940, color: '#c0c0c0', length: 1 },
-  { id: 15, name: 'Boeing 707', class: VEHICLE_CLASS.AIR, type: 'single', speed: 500, power: 0, cost: 180000, capacity: 160, cargo: [0], reliability: 95, year: 1958, color: '#4169e1', length: 1 },
-  { id: 16, name: 'Cargo Plane', class: VEHICLE_CLASS.AIR, type: 'single', speed: 350, power: 0, cost: 120000, capacity: 60, cargo: [2,3,4,5,6,8,9,10,11,12,13], reliability: 90, year: 1950, color: '#8b4513', length: 1 },
-  { id: 17, name: 'Air Mail', class: VEHICLE_CLASS.AIR, type: 'single', speed: 250, power: 0, cost: 40000, capacity: 20, cargo: [1], reliability: 90, year: 1940, color: '#ffff00', length: 1 },
-
-  // Ships
-  { id: 18, name: 'Cargo Ship', class: VEHICLE_CLASS.WATER, type: 'single', speed: 30, power: 0, cost: 25000, capacity: 80, cargo: [2,3,4,5,6,7,8,9,10,11,12], reliability: 85, year: 1920, color: '#8b4513', length: 1 },
-  { id: 19, name: 'Passenger Ship', class: VEHICLE_CLASS.WATER, type: 'single', speed: 35, power: 0, cost: 40000, capacity: 200, cargo: [0], reliability: 85, year: 1920, color: '#228b22', length: 1 },
-  { id: 20, name: 'Ferry', class: VEHICLE_CLASS.WATER, type: 'single', speed: 40, power: 0, cost: 60000, capacity: 120, cargo: [0], reliability: 90, year: 1935, color: '#4169e1', length: 1 },
+export const VEHICLE_DEFS = [
+  // Trains (id 0-5)
+  { id: 0, name: 'Steam Loco', cls: VEHICLE_CLASSES.TRAIN, type: 'engine', speed: 60, power: 200, cost: 8000, capacity: 0, reliability: 80, minYear: 1920, color: '#8b4513', maintenance: 200 },
+  { id: 1, name: 'Diesel Loco', cls: VEHICLE_CLASSES.TRAIN, type: 'engine', speed: 100, power: 350, cost: 25000, capacity: 0, reliability: 90, minYear: 1935, color: '#228b22', maintenance: 350 },
+  { id: 2, name: 'Electric Loco', cls: VEHICLE_CLASSES.TRAIN, type: 'engine', speed: 140, power: 500, cost: 60000, capacity: 0, reliability: 95, minYear: 1950, color: '#4169e1', maintenance: 500 },
+  { id: 3, name: 'High Speed', cls: VEHICLE_CLASSES.TRAIN, type: 'engine', speed: 220, power: 800, cost: 150000, capacity: 0, reliability: 98, minYear: 1965, color: '#dc143c', maintenance: 800 },
+  { id: 4, name: 'Passenger Car', cls: VEHICLE_CLASSES.TRAIN, type: 'wagon', speed: 0, power: 0, cost: 4000, capacity: 32, cargoTypes: [0], reliability: 85, minYear: 1920, color: '#228b22', maintenance: 100 },
+  { id: 5, name: 'Cargo Wagon', cls: VEHICLE_CLASSES.TRAIN, type: 'wagon', speed: 0, power: 0, cost: 3000, capacity: 20, cargoTypes: [2,3,4,5,6,7,8,9,10,11,12,13], reliability: 85, minYear: 1920, color: '#8b4513', maintenance: 80 },
+  // Road vehicles (id 6-11)
+  { id: 6, name: 'Minibus', cls: VEHICLE_CLASSES.ROAD, type: 'single', speed: 50, power: 0, cost: 2000, capacity: 12, cargoTypes: [0], reliability: 75, minYear: 1920, color: '#ff6347', maintenance: 100 },
+  { id: 7, name: 'Bus', cls: VEHICLE_CLASSES.ROAD, type: 'single', speed: 65, power: 0, cost: 5000, capacity: 28, cargoTypes: [0], reliability: 80, minYear: 1930, color: '#228b22', maintenance: 150 },
+  { id: 8, name: 'Coach', cls: VEHICLE_CLASSES.ROAD, type: 'single', speed: 80, power: 0, cost: 12000, capacity: 60, cargoTypes: [0], reliability: 85, minYear: 1945, color: '#4169e1', maintenance: 250 },
+  { id: 9, name: 'Cargo Truck', cls: VEHICLE_CLASSES.ROAD, type: 'single', speed: 55, power: 0, cost: 4000, capacity: 10, cargoTypes: [2,3,4,5,6,7,8,9,10,11,12], reliability: 75, minYear: 1920, color: '#8b4513', maintenance: 120 },
+  { id: 10, name: 'Long Dist. Truck', cls: VEHICLE_CLASSES.ROAD, type: 'single', speed: 70, power: 0, cost: 8000, capacity: 16, cargoTypes: [2,3,4,5,6,7,8,9,10,11,12], reliability: 80, minYear: 1940, color: '#b8860b', maintenance: 200 },
+  { id: 11, name: 'Mail Van', cls: VEHICLE_CLASSES.ROAD, type: 'single', speed: 55, power: 0, cost: 3000, capacity: 8, cargoTypes: [1], reliability: 75, minYear: 1920, color: '#ffff00', maintenance: 100 },
+  // Aircraft (id 12-16)
+  { id: 12, name: 'Cessna', cls: VEHICLE_CLASSES.AIR, type: 'single', speed: 200, power: 0, cost: 15000, capacity: 8, cargoTypes: [0], reliability: 85, minYear: 1935, color: '#ffffff', maintenance: 400 },
+  { id: 13, name: 'DC-3', cls: VEHICLE_CLASSES.AIR, type: 'single', speed: 250, power: 0, cost: 45000, capacity: 24, cargoTypes: [0], reliability: 90, minYear: 1940, color: '#c0c0c0', maintenance: 600 },
+  { id: 14, name: 'Boeing 707', cls: VEHICLE_CLASSES.AIR, type: 'single', speed: 500, power: 0, cost: 180000, capacity: 160, cargoTypes: [0], reliability: 95, minYear: 1958, color: '#4169e1', maintenance: 1200 },
+  { id: 15, name: 'Cargo Plane', cls: VEHICLE_CLASSES.AIR, type: 'single', speed: 350, power: 0, cost: 120000, capacity: 60, cargoTypes: [2,3,4,5,6,8,9,10,11,12,13], reliability: 90, minYear: 1950, color: '#8b4513', maintenance: 900 },
+  { id: 16, name: 'Air Mail', cls: VEHICLE_CLASSES.AIR, type: 'single', speed: 250, power: 0, cost: 40000, capacity: 20, cargoTypes: [1], reliability: 90, minYear: 1940, color: '#ffff00', maintenance: 500 },
+  // Ships (id 17-19)
+  { id: 17, name: 'Cargo Ship', cls: VEHICLE_CLASSES.WATER, type: 'single', speed: 30, power: 0, cost: 25000, capacity: 80, cargoTypes: [2,3,4,5,6,7,8,9,10,11,12], reliability: 85, minYear: 1920, color: '#8b4513', maintenance: 500 },
+  { id: 18, name: 'Passenger Ship', cls: VEHICLE_CLASSES.WATER, type: 'single', speed: 35, power: 0, cost: 40000, capacity: 200, cargoTypes: [0], reliability: 85, minYear: 1920, color: '#228b22', maintenance: 600 },
+  { id: 19, name: 'Ferry', cls: VEHICLE_CLASSES.WATER, type: 'single', speed: 40, power: 0, cost: 60000, capacity: 120, cargoTypes: [0], reliability: 90, minYear: 1935, color: '#4169e1', maintenance: 800 },
 ];
 
-// Construction tools
-export const TOOL = {
-  CURSOR: 0,
-  DEMOLISH: 1,
-  BUILD_ROAD: 2,
-  BUILD_RAIL: 3,
-  BUILD_TRAIN_STATION: 4,
-  BUILD_BUS_STOP: 5,
-  BUILD_TRUCK_STOP: 6,
-  BUILD_AIRPORT: 7,
-  BUILD_DOCK: 8,
-  BUILD_BRIDGE: 9,
-  BUILD_TUNNEL: 10,
-  TERRAIN_LOWER: 11,
-  TERRAIN_RAISE: 12,
-  FILL_WATER: 13,
-  CREATE_WATER: 14,
-  PLANT_TREES: 15,
-  SIGNAL: 16,
-};
-
-export const TOOL_NAMES = {
-  [TOOL.CURSOR]: 'Select',
-  [TOOL.DEMOLISH]: 'Demolish',
-  [TOOL.BUILD_ROAD]: 'Build Road',
-  [TOOL.BUILD_RAIL]: 'Build Rail',
-  [TOOL.BUILD_TRAIN_STATION]: 'Train Station',
-  [TOOL.BUILD_BUS_STOP]: 'Bus Stop',
-  [TOOL.BUILD_TRUCK_STOP]: 'Truck Stop',
-  [TOOL.BUILD_AIRPORT]: 'Airport',
-  [TOOL.BUILD_DOCK]: 'Dock',
-  [TOOL.BUILD_BRIDGE]: 'Bridge',
-  [TOOL.BUILD_TUNNEL]: 'Tunnel',
-  [TOOL.TERRAIN_LOWER]: 'Lower Land',
-  [TOOL.TERRAIN_RAISE]: 'Raise Land',
-  [TOOL.FILL_WATER]: 'Fill Water',
-  [TOOL.CREATE_WATER]: 'Create Water',
-  [TOOL.PLANT_TREES]: 'Plant Trees',
-  [TOOL.SIGNAL]: 'Signal',
-};
-
-export const TOOL_COSTS = {
-  [TOOL.DEMOLISH]: 100,
-  [TOOL.BUILD_ROAD]: 50,
-  [TOOL.BUILD_RAIL]: 150,
-  [TOOL.BUILD_TRAIN_STATION]: 1500,
-  [TOOL.BUILD_BUS_STOP]: 500,
-  [TOOL.BUILD_TRUCK_STOP]: 500,
-  [TOOL.BUILD_AIRPORT]: 50000,
-  [TOOL.BUILD_DOCK]: 10000,
-  [TOOL.BUILD_BRIDGE]: 200,
-  [TOOL.BUILD_TUNNEL]: 300,
-  [TOOL.TERRAIN_LOWER]: 200,
-  [TOOL.TERRAIN_RAISE]: 200,
-  [TOOL.FILL_WATER]: 300,
-  [TOOL.CREATE_WATER]: 300,
-  [TOOL.PLANT_TREES]: 5,
-  [TOOL.SIGNAL]: 100,
-};
-
-// Town growth stages
-export const TOWN_STAGES = [
-  { name: 'Hamlet', population: 50, color: '#9acd32' },
-  { name: 'Village', population: 100, color: '#32cd32' },
-  { name: 'Town', population: 250, color: '#228b22' },
-  { name: 'City', population: 500, color: '#006400' },
-  { name: 'Metropolis', population: 1000, color: '#004d00' },
+// Town sizes
+export const TOWN_SIZES = [
+  { name: 'Hamlet', minPop: 0, maxPop: 49, color: '#9acd32' },
+  { name: 'Village', minPop: 50, maxPop: 99, color: '#32cd32' },
+  { name: 'Town', minPop: 100, maxPop: 249, color: '#228b22' },
+  { name: 'City', minPop: 250, maxPop: 499, color: '#006400' },
+  { name: 'Metropolis', minPop: 500, maxPop: 9999, color: '#004d00' },
 ];
 
-// Difficulty settings
-export const DIFFICULTY = {
-  EASY: { startingMoney: 200000, maxLoan: 4000000, interestRate: 3, targetWealth: 2000000, constructionCost: 0.8, vehicleCost: 0.8, competition: false },
-  NORMAL: { startingMoney: 100000, maxLoan: 4000000, interestRate: 5, targetWealth: 4000000, constructionCost: 1.0, vehicleCost: 1.0, competition: true },
-  HARD: { startingMoney: 50000, maxLoan: 2000000, interestRate: 8, targetWealth: 8000000, constructionCost: 1.5, vehicleCost: 1.5, competition: true },
-};
+// Economy
+export const STARTING_MONEY = 100000;
+export const MAX_LOAN = 4000000;
+export const LOAN_STEP = 10000;
+export const INTEREST_RATE = 0.05; // 5% per year
+export const FARE_PER_TILE = 1.5;
 
-// Game speed (ticks per second)
+// Game time
+export const START_YEAR = 1920;
+export const END_YEAR = 2020;
+export const TICKS_PER_DAY = 1;
+export const DAYS_PER_MONTH = 30;
+
+// Game speed
 export const GAME_SPEED = {
   PAUSED: 0,
   NORMAL: 1,
@@ -223,19 +256,21 @@ export const GAME_SPEED = {
 };
 
 export const GAME_SPEED_NAMES = {
-  [GAME_SPEED.PAUSED]: '⏸ Paused',
-  [GAME_SPEED.NORMAL]: '▶ Normal',
-  [GAME_SPEED.FAST]: '⏩ Fast',
-  [GAME_SPEED.FASTEST]: '⏭ Fastest',
+  [GAME_SPEED.PAUSED]: '⏸',
+  [GAME_SPEED.NORMAL]: '▶',
+  [GAME_SPEED.FAST]: '⏩',
+  [GAME_SPEED.FASTEST]: '⏭',
 };
 
-// Months
-export const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+export const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-// Fare calculation
-export const FARE_PER_TILE = 1.5; // base fare per tile distance
+// Difficulty presets
+export const DIFFICULTY = {
+  easy: { money: 200000, maxLoan: 4000000, interest: 0.03, target: 2000000, costMult: 0.8 },
+  normal: { money: 100000, maxLoan: 4000000, interest: 0.05, target: 4000000, costMult: 1.0 },
+  hard: { money: 50000, maxLoan: 2000000, interest: 0.08, target: 8000000, costMult: 1.5 },
+};
 
-// Simulation tick rate (1 tick = 1 day)
-export const TICKS_PER_DAY = 1;
-export const DAYS_PER_MONTH = 30;
-export const MONTHS_PER_YEAR = 12;
+// Win/lose
+export const WIN_TARGET = 4000000;
+export const LOSE_MONEY = -500000;
