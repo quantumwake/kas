@@ -157,6 +157,8 @@ export default function App() {
   const fileInputRef = useRef(null);
 
   // ---- Game Loop ----
+  const prevTicksRef = useRef(0);
+
   useEffect(() => {
     if (!gs || gs.paused) {
       if (gameLoopRef.current) clearInterval(gameLoopRef.current);
@@ -167,10 +169,24 @@ export default function App() {
       for (let i = 0; i < gs.gameSpeed; i++) {
         dispatch({ type: ACTIONS.TICK });
       }
+      // Auto-save every 5 in-game months
+      if (gs.dateTicks > 0 && gs.dateTicks % (30 * 5) === 0 && gs.dateTicks !== prevTicksRef.current) {
+        saveGame(gs, 'AutoSave');
+      }
+      prevTicksRef.current = gs.dateTicks;
     }, 1000 / 10); // 10 ticks per second base
 
     return () => { if (gameLoopRef.current) clearInterval(gameLoopRef.current); };
   }, [gs?.paused, gs?.gameSpeed, gs]);
+
+  // ---- Auto-clear notifications ----
+  useEffect(() => {
+    if (!gs || gs.notifications.length === 0) return;
+    const timer = setTimeout(() => {
+      dispatch({ type: ACTIONS.CLEAR_NOTIFICATIONS });
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [gs?.notifications]);
 
   // ---- Keyboard Controls ----
   useEffect(() => {
