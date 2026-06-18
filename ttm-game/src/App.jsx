@@ -412,6 +412,7 @@ export default function App() {
           onTileClick={handleTileClick}
           onTileHover={handleTileHover}
           onCameraMove={(pos) => dispatch({ type: 'SET_CAMERA', payload: pos })}
+          onCameraZoom={(delta) => dispatch({ type: ACTIONS.ZOOM, payload: delta })}
         />
 
         {/* Panels */}
