@@ -89,6 +89,7 @@ export function loadGame(saveData) {
     cameraY: saveData.cameraY,
     terrain: new Uint8Array(saveData.terrain),
     features: new Uint8Array(saveData.features),
+    elevation: saveData.elevation ? new Float32Array(saveData.elevation) : base.elevation,
     surface: new Uint8Array(saveData.surface),
     stationMap: new Uint8Array(saveData.stationMap),
     towns: saveData.towns || base.towns,
