@@ -97,6 +97,80 @@ function gameReducer(state, action) {
       return { ...state, gameState: { ...state.gameState, selectedVehicle: action.payload } };
     }
 
+    case ACTIONS.SET_VEHICLE_ROUTE: {
+      if (!state.gameState) return state;
+      const gs = state.gameState;
+      const { vehicleId, route } = action.payload;
+      const newState = setVehicleRoute(gs, vehicleId, route);
+      playClick();
+      return {
+        ...state,
+        gameState: {
+          ...newState,
+          notifications: [...newState.notifications, `Route set for vehicle #${vehicleId + 1}`],
+        },
+      };
+    }
+
+    case 'ENTER_ROUTE_MODE': {
+      if (!state.gameState) return state;
+      playClick();
+      return { ...state, gameState: { ...state.gameState, routeMode: action.payload } };
+    }
+
+    case 'ADD_ROUTE_STOP': {
+      if (!state.gameState || !state.gameState.routeMode) return state;
+      const gs = state.gameState;
+      const { stationId } = action.payload;
+      // Don't add duplicates
+      if (gs.routeMode.stations.includes(stationId)) return state;
+      const newStations = [...gs.routeMode.stations, stationId];
+      playClick();
+      return {
+        ...state,
+        gameState: { ...gs, routeMode: { ...gs.routeMode, stations: newStations } },
+      };
+    }
+
+    case 'REMOVE_ROUTE_STOP': {
+      if (!state.gameState || !state.gameState.routeMode) return state;
+      const gs = state.gameState;
+      const { stationId } = action.payload;
+      const newStations = gs.routeMode.stations.filter(id => id !== stationId);
+      playClick();
+      return {
+        ...state,
+        gameState: { ...gs, routeMode: { ...gs.routeMode, stations: newStations } },
+      };
+    }
+
+    case 'APPLY_ROUTE': {
+      if (!state.gameState || !state.gameState.routeMode) return state;
+      const gs = state.gameState;
+      const { vehicleId, stations } = gs.routeMode;
+      if (stations.length < 2) {
+        return {
+          ...state,
+          gameState: { ...gs, routeMode: null, notifications: ['Need at least 2 stops in a route'] },
+        };
+      }
+      const newState = setVehicleRoute(gs, vehicleId, stations);
+      return {
+        ...state,
+        gameState: {
+          ...newState,
+          routeMode: null,
+          notifications: [...newState.notifications, `Route set for vehicle #${vehicleId + 1} (${stations.length} stops)`],
+        },
+      };
+    }
+
+    case 'CANCEL_ROUTE': {
+      if (!state.gameState) return state;
+      playClick();
+      return { ...state, gameState: { ...state.gameState, routeMode: null } };
+    }
+
     case ACTIONS.CLEAR_NOTIFICATIONS: {
       if (!state.gameState) return state;
       return { ...state, gameState: { ...state.gameState, notifications: [] } };
