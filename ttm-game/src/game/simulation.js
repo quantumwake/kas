@@ -39,6 +39,16 @@ export function gameTick(state) {
     newState = industryProduction(newState);
   }
 
+  // ---- Win/Lose check ----
+  if (newState.money >= (newState.targetWealth || 4000000)) {
+    newState.notifications = [...newState.notifications, '🎉 Congratulations! You reached the target wealth!'];
+  }
+  if (newState.money < -500000 && newState.loan >= newState.maxLoan) {
+    newState.notifications = [...newState.notifications, '💀 Bankruptcy! You have gone bankrupt!'];
+    newState.paused = true;
+    newState.gameSpeed = 0;
+  }
+
   return newState;
 }
 
