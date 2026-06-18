@@ -760,11 +760,13 @@ export default function GameCanvas({ state, onTileClick, onTileHover, onCameraMo
       handleMouse(e);
       return;
     }
-    const dx = (e.clientX - dragRef.current.startX) / (state.zoom / ISO_W) * 0.5;
-    const dy = (e.clientY - dragRef.current.startY) / (state.zoom / ISO_H) * 0.5;
-    // Convert screen drag to isometric camera movement
-    const newCamX = Math.max(0, Math.min(MAP_SIZE - 1, dragRef.current.startCamX - (dx - dy) / 2));
-    const newCamY = Math.max(0, Math.min(MAP_SIZE - 1, dragRef.current.startCamY - (dx + dy) / 2));
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    // Inverse isometric: screen pixel delta → tile delta
+    const tileDx = (dx + 2 * dy) / state.zoom;
+    const tileDy = (2 * dy - dx) / state.zoom;
+    const newCamX = Math.max(0, Math.min(MAP_SIZE - 1, dragRef.current.startCamX - tileDx));
+    const newCamY = Math.max(0, Math.min(MAP_SIZE - 1, dragRef.current.startCamY - tileDy));
     if (onCameraMove) onCameraMove({ x: newCamX, y: newCamY });
   }, [state.zoom, onCameraMove, handleMouse]);
 
