@@ -4,7 +4,7 @@ from agent.adapters.tools.image import generate_image
 from agent import config
 
 # Override the art binary to use the venv one
-config.ART_BIN = '.venv/bin/mflux-generate'
+config.ART_BIN = '.venv/bin/mflux-generate-flux2'
 
 vehicles = [
     (0, 'Steam Locomotive', '#8b4513', 'train'),
