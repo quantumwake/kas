@@ -455,7 +455,8 @@ export default function GameCanvas({ state, onTileClick, onTileHover, onCameraMo
           onMouseMove={handleMouseMove}
           onMouseDown={handleMouseDown}
           onMouseUp={handleMouseUp}
-          onContextMenu={handleContextMenu} />
+          onContextMenu={handleContextMenu}
+          onWheel={handleWheel} />
       </div>
       <div className="minimap-container">
         <canvas ref={minimapRef} className="minimap-canvas"
