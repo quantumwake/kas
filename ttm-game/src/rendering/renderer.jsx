@@ -428,6 +428,13 @@ export default function GameCanvas({ state, onTileClick, onTileHover, onCameraMo
 
   const handleContextMenu = useCallback((e) => e.preventDefault(), []);
 
+  // Scroll wheel zoom
+  const handleWheel = useCallback((e) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -1 : 1;
+    onCameraZoom(delta);
+  }, [onCameraZoom]);
+
   const handleMinimapClick = useCallback((e) => {
     const minimap = minimapRef.current;
     if (!minimap) return;
