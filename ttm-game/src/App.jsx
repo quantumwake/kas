@@ -311,6 +311,15 @@ export default function App() {
       return;
     }
 
+    // Route mode: clicking stations adds them to the route
+    if (gs.routeMode) {
+      const station = getStationAtPos(gs, tile.x, tile.y);
+      if (station) {
+        dispatch({ type: 'ADD_ROUTE_STOP', payload: { stationId: station.id } });
+      }
+      return;
+    }
+
     // Check if clicking on a vehicle
     const vehicle = gs.vehicles.find(v => v.x === tile.x && v.y === tile.y);
     if (vehicle) {
