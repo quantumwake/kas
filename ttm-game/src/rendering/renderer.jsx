@@ -719,9 +719,13 @@ export default function GameCanvas({ state, onTileClick, onTileHover, onCameraMo
     const my = clientY - rect.top - canvas.height / 2;
 
     // Inverse isometric transform
+    // screenX = cx/2 + (tileX - tileY - cx + cy) * zoom/2
+    // screenY = cy/2 + (tileX + tileY - cx - cy) * zoom/4
+    // Inverting: tileX = (mx + 2*my)/zoom + cx - cy
+    //           tileY = (2*my - mx)/zoom + cy
     const zoom = state.zoom;
-    const tileX = Math.floor((mx / (ISO_W / 2) + my / (ISO_H / 2)) / (2 * zoom) + state.cameraX - state.cameraY);
-    const tileY = Math.floor((my / (ISO_H / 2) - mx / (ISO_W / 2)) / (2 * zoom) + state.cameraY);
+    const tileX = Math.floor((mx + 2 * my) / zoom + state.cameraX - state.cameraY);
+    const tileY = Math.floor((2 * my - mx) / zoom + state.cameraY);
 
     if (tileX >= 0 && tileX < MAP_SIZE && tileY >= 0 && tileY < MAP_SIZE) {
       return { x: tileX, y: tileY };
