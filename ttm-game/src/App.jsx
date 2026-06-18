@@ -62,7 +62,7 @@ function gameReducer(state, action) {
 
     case ACTIONS.MOVE_CAMERA: {
       if (!state.gameState) return state;
-      const speed = state.gameState.zoom > 4 ? 8 : 16;
+      const speed = state.gameState.zoom < 0.75 ? 4 : state.gameState.zoom < 1.5 ? 8 : 16;
       let { x, y } = action.payload;
       if (x === undefined) x = 0;
       if (y === undefined) y = 0;
