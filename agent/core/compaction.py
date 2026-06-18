@@ -14,25 +14,96 @@ from .prompts import COMPACT_PROMPT, SUBAGENT_HINT, SYSTEM
 from .toolspec import SUBAGENT_TOOL, TOOLS
 
 
-def should_compact(runner, input_tokens: int, compact_at: int):
-    """Decide whether to compact, by reason. Returns (do, reason).
+# Fraction of the model's native window past which we MUST compact, even in the
+# middle of a tool-calling sequence — sailing past the trained positions yields
+# garbage. This is the hard ceiling; everything else is deferrable.
+HARD_LIMIT_FRAC = 0.85
 
-    Priority: (1) context-overflow safety — must compact, overrides cooldown;
-    (2) decode-rate — the real symptom compaction relieves; (3) optional
-    absolute token cap. (2) and (3) respect the cooldown.
+
+def classify_compaction(runner, input_tokens: int, compact_at: int):
+    """Classify the compaction need as ("hard" | "soft" | "none", reason).
+
+    - "hard": context-overflow — must compact NOW, even mid-tool-call (overrides
+      the cooldown). Crash/garbage prevention.
+    - "soft": decode-rate or absolute-size — an optimization, safe to DEFER to a
+      turn boundary so we never interrupt a multi-step write. Respects cooldown.
+    - "none": leave it.
     """
-    if runner.context_limit and input_tokens > int(0.85 * runner.context_limit):
-        return True, f"nearing context limit ({input_tokens}/{runner.context_limit})"
+    frac = getattr(runner, "hard_limit_frac", HARD_LIMIT_FRAC)
+    if runner.context_limit and input_tokens > int(frac * runner.context_limit):
+        return "hard", f"hard context limit ({input_tokens}/{runner.context_limit})"
     if runner.compact_cooldown > 0:
-        return False, ""
+        return "none", ""
     w = runner.tps_window
-    if config.COMPACT_TPS and len(w) >= 2:
+    if config.COMPACT_TPS and getattr(runner, "tps_valve", True) and len(w) >= 2:
         smoothed = sum(w) / len(w)
         if smoothed < config.COMPACT_TPS:
-            return True, f"decode slowed to {smoothed:.1f} tok/s"
+            return "soft", f"decode slowed to {smoothed:.1f} tok/s"
     if compact_at and (input_tokens - runner.compact_floor) > compact_at:
-        return True, f"size {input_tokens} tok"
-    return False, ""
+        return "soft", f"size {input_tokens} tok"
+    return "none", ""
+
+
+def should_compact(runner, input_tokens: int, compact_at: int):
+    """Back-compat boolean wrapper around classify_compaction: (do, reason)."""
+    level, reason = classify_compaction(runner, input_tokens, compact_at)
+    return level != "none", reason
+
+
+def run_compaction(
+    client, messages, io, model, runner, input_tokens, reason,
+    *, store=None, thread="main", max_tokens=16384, tools=None,
+) -> None:
+    """Compact `messages` in place and reset the post-compaction bookkeeping
+    (floor / cooldown / decode-rate window)."""
+    io.notice(f"[compaction trigger: {reason}]")
+    compact_messages(
+        client, messages, io, model, input_tokens,
+        store=store, thread=thread, max_tokens=max_tokens, tools=tools,
+    )
+    summary_chars = len(messages[0]["content"]) if messages else 0
+    runner.compact_floor = summary_chars // 4 + 1000  # ~tokens + system/tools
+    runner.compact_cooldown = config.COMPACT_COOLDOWN
+    runner.tps_window.clear()  # post-compaction decode is fast; don't re-trigger on stale lows
+
+
+def _fmt_k(n: int | None) -> str:
+    return f"{n / 1000:.0f}k" if n else ("0" if n == 0 else "?")
+
+
+def ctx_command(runner, arg: str) -> str:
+    """Handle `/ctx [<tokens>|max|auto|valve on|valve off]`: show or set the
+    compaction policy live. Returns a status line. The hard limit is never
+    exceeded — a numeric target is clamped to it."""
+    native = runner.context_limit
+    a = (arg or "").strip().lower()
+    if a in ("max", "full"):
+        runner.compact_at = 0          # disable the soft size cap
+        runner.tps_valve = False       # disable the decode-speed valve -> ride to the hard limit
+    elif a in ("auto", "default", "reset"):
+        runner.compact_at = config.COMPACT_AT
+        runner.tps_valve = True
+    elif a in ("valve on", "on"):
+        runner.tps_valve = True
+    elif a in ("valve off", "off"):
+        runner.tps_valve = False
+    elif a:
+        try:
+            val = int(float(a[:-1]) * 1000) if a.endswith("k") else int(float(a))
+        except ValueError:
+            return f"usage: /ctx [<tokens>|max|auto|valve on|valve off] (got {arg.strip()!r})"
+        if native:
+            val = min(val, int(runner.hard_limit_frac * native))  # never exceed the hard limit
+        runner.compact_at = max(0, val)
+    used = getattr(runner, "last_input_tokens", 0)
+    hard = int(runner.hard_limit_frac * native) if native else None
+    pct = f" ({used * 100 // native}%)" if native and used else ""
+    soft = "off" if not runner.compact_at else _fmt_k(runner.compact_at)
+    return (
+        f"context: window {_fmt_k(native) if native else 'unknown'} · "
+        f"using ~{_fmt_k(used)}{pct} · hard limit {_fmt_k(hard) if hard else 'n/a'} · "
+        f"soft-compact at {soft} · decode-valve {'on' if runner.tps_valve else 'off'}"
+    )
 
 
 def compact_messages(

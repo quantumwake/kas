@@ -55,6 +55,7 @@ test: ## run parser + protocol + characterization tests (no model needed)
 	@uv run python tests/test_continuation.py
 	@uv run python tests/test_cache.py
 	@uv run python tests/test_tools.py
+	@uv run python tests/test_compaction.py
 
 download: ## download model weights (MODEL=...)
 	@HF_XET_HIGH_PERFORMANCE=1 uv run hf download $(MODEL)

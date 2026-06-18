@@ -141,6 +141,8 @@ def main() -> None:
                     help="recall tool — local BM25 over code/docs/memory (on by default; --no-rag to disable)")
     ap.add_argument("--sandbox", action="store_true", default=os.environ.get("KAS_SANDBOX") == "1",
                     help="jail the file tools to the workdir (reject absolute/.. escapes)")
+    ap.add_argument("--art", action="store_true", default=os.environ.get("KAS_ART") == "1",
+                    help="enable generate_image (local FLUX via mflux; needs the 'art' extra)")
     ap.add_argument("--resume", nargs="?", const="__latest__", metavar="SESSION_ID",
                     help="resume a saved session (latest for this workdir if no id given)")
     ap.add_argument("--sessions", action="store_true", help="list resumable sessions and exit")
@@ -192,7 +194,8 @@ def main() -> None:
     if args.task:  # one-shot
         io = ConsoleIO(config.BASE_URL)
         runner = ToolRunner(workdir, yolo=args.yolo, io=io, checkpoint=args.checkpoint,
-                            net=args.net, rag=args.rag, context_limit=context_limit, sandbox=args.sandbox)
+                            net=args.net, rag=args.rag, context_limit=context_limit,
+                            sandbox=args.sandbox, compact_at=config.COMPACT_AT, art=args.art)
         print_console(model=config.MODEL, extra=f"workdir {workdir} · yolo {args.yolo}")
         messages.append({"role": "user", "content": " ".join(args.task)})
         try:
@@ -219,6 +222,7 @@ def main() -> None:
             rag=args.rag,
             context_limit=context_limit,
             sandbox=args.sandbox,
+            art=args.art,
         ).run()
         return
 
@@ -242,8 +246,14 @@ def main() -> None:
                 print(f"yolo {'ON — commands run without confirmation' if runner.yolo else 'OFF — commands need approval'}")
             elif user == "/status":
                 print(f"model={config.MODEL}  yolo={runner.yolo}  workdir={runner.workdir}  turns={len(messages)}")
+            elif user == "/ctx" or user.startswith("/ctx "):
+                from agent.core.compaction import ctx_command
+                print(ctx_command(runner, user[len("/ctx"):]))
+            elif user == "/art":
+                runner.art = not runner.art
+                print(f"image generation {'ON (needs mflux: uv add mflux)' if runner.art else 'OFF'}")
             else:
-                print("commands: /yolo (toggle command confirmation), /status, exit")
+                print("commands: /yolo  /ctx [<tokens>|max|auto|valve on|valve off]  /art  /status  exit")
             continue
         messages.append({"role": "user", "content": user})
         try:

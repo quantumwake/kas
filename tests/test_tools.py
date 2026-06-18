@@ -113,4 +113,32 @@ with tempfile.TemporaryDirectory() as tmp:
     assert err and "sandbox" in out.lower(), (out, err)
     print("sandbox jail: OK")
 
+
+# ---------------------------------------------------------------------------
+# generate_image: graceful when the backend is absent + command construction
+# ---------------------------------------------------------------------------
+
+from agent import config as _cfg
+from agent.adapters.tools.image import build_command, generate_image
+
+with tempfile.TemporaryDirectory() as tmp:
+    # Backend missing -> a helpful error, never a crash.
+    _saved_bin = _cfg.ART_BIN
+    _cfg.ART_BIN = "definitely-not-a-real-binary-xyz"
+    out, err = generate_image("a red truck", pathlib.Path(tmp))
+    assert err and "not found" in out and "art" in out, (out, err)
+
+    # Empty prompt is rejected.
+    out, err = generate_image("   ", pathlib.Path(tmp))
+    assert err and "non-empty" in out, (out, err)
+    _cfg.ART_BIN = _saved_bin
+
+    # Command assembly: prompt + output + model + seed + the style preamble.
+    _saved_style, _cfg.ART_STYLE = _cfg.ART_STYLE, "isometric pixel sprite"
+    cmd = build_command("a red truck", pathlib.Path(tmp) / "truck.png", seed=7)
+    _cfg.ART_STYLE = _saved_style
+    assert "--prompt" in cmd and "isometric pixel sprite, a red truck" in cmd, cmd
+    assert "--output" in cmd and "--seed" in cmd and "7" in cmd, cmd
+    print("generate_image: OK")
+
 print("all tool tests passed")

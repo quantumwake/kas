@@ -31,7 +31,7 @@ from scripts.select_model import downloaded_models
 
 PLACEHOLDER = "task or steering · / for commands · exit"
 COMMANDS = ["/yolo", "/rag", "/rag enable", "/rag disable", "/subagents", "/status",
-            "/compact", "/fx", "/stop", "/pause", "/model", "exit"]
+            "/ctx", "/ctx max", "/ctx auto", "/art", "/compact", "/fx", "/stop", "/pause", "/model", "exit"]
 
 
 class ModelSelect(ModalScreen):
@@ -339,6 +339,7 @@ class AgentApp(App):
         rag: bool = False,
         context_limit: int | None = None,
         sandbox: bool = False,
+        art: bool = False,
     ):
         super().__init__()
         self.client = client
@@ -351,7 +352,7 @@ class AgentApp(App):
         self.io = TuiIO(self)
         self.runner = core.ToolRunner(
             workdir, yolo=yolo, io=self.io, checkpoint=checkpoint, net=net, rag=rag,
-            context_limit=context_limit, sandbox=sandbox,
+            context_limit=context_limit, sandbox=sandbox, compact_at=compact_at, art=art,
         )
         self.store = store or core.SessionStore(workdir)
         self.msg_q: "queue.Queue[str | None]" = queue.Queue()
@@ -595,6 +596,17 @@ class AgentApp(App):
                     Text(f"recall {'ENABLED — local code/docs/memory search available' if self.runner.rag else 'DISABLED'}",
                          style="yellow")
                 )
+            elif text == "/ctx" or text.startswith("/ctx "):
+                from agent.core.compaction import ctx_command
+                self.body_write(Text(ctx_command(self.runner, text[len("/ctx"):]), style="yellow"))
+                return
+            elif text == "/art":
+                self.runner.art = not self.runner.art
+                self.body_write(Text(
+                    f"image generation {'ENABLED — generate_image available' if self.runner.art else 'DISABLED'}"
+                    + ("" if self.runner.art else "") + " (needs the 'art' extra: uv add mflux)",
+                    style="yellow"))
+                return
             elif text == "/status":
                 self.body_write(
                     Text(
@@ -606,8 +618,8 @@ class AgentApp(App):
             else:
                 self.body_write(
                     Text(
-                        "commands: /yolo  /rag [enable|disable]  /subagents  /subagent <n>  /status  "
-                        "/compact  /model  /fx  /stop (Esc)  /pause (^P) · exit",
+                        "commands: /yolo  /rag [enable|disable]  /ctx [<n>|max|auto]  /subagents  "
+                        "/subagent <n>  /status  /compact  /model  /fx  /stop (Esc)  /pause (^P) · exit",
                         style="yellow",
                     )
                 )
@@ -654,8 +666,7 @@ class AgentApp(App):
                     messages.append({"role": "user", "content": task})
                 core.agent_turn(
                     self.client, messages, self.runner, self.io,
-                    model=self.model, max_tokens=self.max_tokens,
-                    compact_at=self.compact_at, store=self.store,
+                    model=self.model, max_tokens=self.max_tokens, store=self.store,
                 )
                 # steering submitted after the final response starts a new turn
                 leftovers = self.io.drain_steers()
@@ -663,8 +674,7 @@ class AgentApp(App):
                     messages.append({"role": "user", "content": "\n".join(leftovers)})
                     core.agent_turn(
                         self.client, messages, self.runner, self.io,
-                        model=self.model, max_tokens=self.max_tokens,
-                        compact_at=self.compact_at, store=self.store,
+                        model=self.model, max_tokens=self.max_tokens, store=self.store,
                     )
                     leftovers = self.io.drain_steers()
             except anthropic.APIError as exc:

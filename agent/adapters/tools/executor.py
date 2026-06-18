@@ -16,7 +16,7 @@ from .web import web_fetch, web_search
 
 
 class ToolRunner:
-    MUTATING_TOOLS = ("write_file", "edit_file", "bash", "bash_send_input")
+    MUTATING_TOOLS = ("write_file", "edit_file", "bash", "bash_send_input", "generate_image")
 
     def __init__(
         self,
@@ -28,9 +28,12 @@ class ToolRunner:
         rag: bool = False,
         context_limit: int | None = None,
         sandbox: bool = False,
+        compact_at: int | None = None,
+        art: bool = False,
     ) -> None:
         self.workdir = workdir
         self.yolo = yolo
+        self.art = art  # generate_image tool available only when True
         if io is None:
             from ...config import BASE_URL
             from ..ui.console import ConsoleIO
@@ -51,6 +54,12 @@ class ToolRunner:
         # otherwise post-compaction re-reads immediately re-trigger it
         self.compact_floor = 0
         self.compact_cooldown = 0  # turns remaining before compaction may fire again
+        # Compaction policy (mutable at runtime via the /ctx command):
+        from ...config import COMPACT_AT
+        self.compact_at = COMPACT_AT if compact_at is None else compact_at  # soft size cap (0 = off)
+        self.tps_valve = True       # decode-speed relief valve on/off
+        self.hard_limit_frac = 0.85  # fraction of native window that forces compaction
+        self.last_input_tokens = 0   # most recent prompt size, for /ctx display
 
     # -- workspace checkpointing ----------------------------------------------
 
@@ -199,3 +208,10 @@ class ToolRunner:
 
     def tool_web_fetch(self, url: str) -> tuple[str, bool]:
         return web_fetch(url)
+
+    def tool_generate_image(
+        self, prompt: str, path: str | None = None, seed: int | None = None, steps: int | None = None
+    ) -> tuple[str, bool]:
+        from .image import generate_image
+
+        return generate_image(prompt, self.workdir, path=path, seed=seed, steps=steps)

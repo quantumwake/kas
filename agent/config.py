@@ -26,6 +26,20 @@ COMPACT_TPS = float(os.environ.get("KAS_COMPACT_TPS", "8.0"))
 
 MAX_TOOL_OUTPUT = 8_000
 
+# --- Opt-in image generation (--art): local mflux/FLUX backend -------------
+# mflux's CLI is per-model and versioned, so every knob is env-tunable and the
+# tool echoes the exact command it ran on failure (easy to correct / self-fix).
+ART_BIN = os.environ.get("KAS_ART_BIN", "mflux-generate")
+ART_MODEL = os.environ.get("KAS_ART_MODEL", "flux2-klein-4b")  # small, fast, fits beside the LLM
+ART_STEPS = int(os.environ.get("KAS_ART_STEPS", "4"))          # distilled FLUX needs few steps
+ART_QUANTIZE = os.environ.get("KAS_ART_QUANTIZE", "8")         # "" to disable
+ART_OUTPUT_DIR = os.environ.get("KAS_ART_OUTPUT_DIR", "assets/generated")
+# Consistency levers (see docs): a style preamble prepended to EVERY prompt so a
+# whole sprite set shares look/angle/scale, plus LoRA files (path[,path]) for a
+# locked style. Pair with a fixed `seed` per asset.
+ART_STYLE = os.environ.get("KAS_ART_STYLE", "")
+ART_LORAS = [p for p in os.environ.get("KAS_ART_LORAS", "").split(os.pathsep) if p]
+
 
 def _truncate(text: str) -> str:
     if len(text) <= MAX_TOOL_OUTPUT:

@@ -10,9 +10,15 @@ dependencies = [
     "anthropic>=0.109",
     "huggingface-hub",
     "textual>=8.2.7",
-    "ddgs>=8.0",
-    "trafilatura>=2.0.0",
 ]
+
+# Opt-in tool backends. Each tool degrades gracefully when its package is
+# absent (the tool returns an install hint), so these stay out of the core
+# install:  uv add ddgs trafilatura   (or)   pip install 'kas[web]'
+[project.optional-dependencies]
+web = ["ddgs>=8.0", "trafilatura>=2.0.0"]   # web_search / web_fetch  (--net)
+art = ["mflux>=0.9"]                          # generate_image (FLUX on MLX) (--art)
+all = ["kas[web,art]"]
 
 [project.scripts]
 kas = "agent.cli:main"

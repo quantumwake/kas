@@ -12,10 +12,10 @@ import httpx
 
 from .. import config
 from ..config import _truncate
-from .compaction import compact_messages, should_compact
+from .compaction import classify_compaction, run_compaction
 from .prompts import SUBAGENT_HINT, SYSTEM, TRUNCATION_NOTE
 from .subagent import SubagentIO
-from .toolspec import RAG_TOOLS, SUBAGENT_MAX_ROUNDS, SUBAGENT_TOOL, TOOLS, WEB_TOOLS
+from .toolspec import IMAGE_TOOLS, RAG_TOOLS, SUBAGENT_MAX_ROUNDS, SUBAGENT_TOOL, TOOLS, WEB_TOOLS
 from .transcript import turn_label
 
 _subagent_seq = 0
@@ -104,7 +104,9 @@ def agent_turn(
     """
     model = model or config.MODEL
     max_tokens = max_tokens or config.MAX_TOKENS
-    compact_at = config.COMPACT_AT if compact_at is None else compact_at
+    # The soft size cap lives on the runner (so /ctx can change it live); a
+    # subagent passes compact_at=0 to disable size-based compaction.
+    compact_at = runner.compact_at if compact_at is None else compact_at
     if model is None:
         raise ValueError("no model resolved — is the server running?")
     tools = list(TOOLS)
@@ -114,9 +116,12 @@ def agent_turn(
         tools += RAG_TOOLS  # opt-in; stable per session so the cache key holds
     if runner.net:
         tools += WEB_TOOLS
+    if getattr(runner, "art", False):
+        tools += IMAGE_TOOLS
     truncations = 0
     rounds = 0
     reconnects = 0  # consecutive dropped-connection retries for the current turn
+    compact_pending = False  # a soft compaction is owed; flush it at a safe boundary
     while True:
         rounds += 1
         if max_rounds is not None and rounds > max_rounds:
@@ -262,26 +267,38 @@ def agent_turn(
             content: list = results + steers + [{"type": "text", "text": TRUNCATION_NOTE}]
             messages.append({"role": "user", "content": content})
             continue
+        # Sample decode-rate + context size for the compaction policy and /ctx.
+        runner.tps_window.append(io.last_decode_tps)
+        runner.last_input_tokens = response.usage.input_tokens
+        level, reason = classify_compaction(runner, response.usage.input_tokens, compact_at)
+
         if not results and not steers:
+            # Turn boundary: the model stopped calling tools — the SAFE place to
+            # compact. Flush a deferred soft compaction (or a fresh trigger) so
+            # the next user turn starts small and fast.
+            if compact_pending or level != "none":
+                run_compaction(
+                    client, messages, io, model, runner, response.usage.input_tokens,
+                    reason or "deferred to end of turn",
+                    store=store, thread=thread, max_tokens=max_tokens, tools=tools,
+                )
             return
+
         messages.append({"role": "user", "content": results + steers})
 
-        # Compaction (decode-speed relief). Trigger primarily on the real
-        # symptom — decode tok/s falling below COMPACT_TPS over a rolling
-        # window — with a context-overflow safety on top. A hard COOLDOWN
-        # plus clearing the window after compaction makes a compact→read→
-        # compact thrash structurally impossible.
-        runner.tps_window.append(io.last_decode_tps)
-        do_compact, reason = should_compact(runner, response.usage.input_tokens, compact_at)
-        if do_compact:
-            io.notice(f"[compaction trigger: {reason}]")
-            compact_messages(
-                client, messages, io, model, response.usage.input_tokens,
+        # Mid-sequence: only the HARD context-overflow limit may compact here —
+        # compacting in the middle of a multi-step operation (e.g. a chunked
+        # write) loses the fine-grained in-progress state and corrupts it. Soft
+        # triggers (decode-speed, size) DEFER to the next turn boundary above.
+        if level == "hard":
+            run_compaction(
+                client, messages, io, model, runner, response.usage.input_tokens, reason,
                 store=store, thread=thread, max_tokens=max_tokens, tools=tools,
             )
-            summary_chars = len(messages[0]["content"]) if messages else 0
-            runner.compact_floor = summary_chars // 4 + 1000  # ~tokens + system/tools
-            runner.compact_cooldown = config.COMPACT_COOLDOWN
-            runner.tps_window.clear()  # post-compaction decode is fast; don't re-trigger on stale lows
+            compact_pending = False
+        elif level == "soft":
+            if not compact_pending:
+                io.notice(f"[compaction deferred to a safe point: {reason}]")
+            compact_pending = True
         elif runner.compact_cooldown > 0:
             runner.compact_cooldown -= 1

@@ -13,7 +13,7 @@ def web_search(query: str, max_results: int = 5) -> tuple[str, bool]:
     try:
         from ddgs import DDGS
     except ImportError:
-        return "web search unavailable (pip install ddgs)", True
+        return "web search unavailable — install the 'web' extra (uv add ddgs)", True
     n = max(1, min(int(max_results or 5), 10))
     results = list(DDGS().text(query, max_results=n))
     if not results:
@@ -28,7 +28,7 @@ def web_fetch(url: str) -> tuple[str, bool]:
     try:
         import trafilatura
     except ImportError:
-        return "web fetch unavailable (pip install trafilatura)", True
+        return "web fetch unavailable — install the 'web' extra (uv add trafilatura)", True
     try:
         resp = httpx.get(
             url, follow_redirects=True, timeout=20,

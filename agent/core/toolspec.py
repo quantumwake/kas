@@ -92,6 +92,33 @@ RAG_TOOLS: list[dict] = [
     },
 ]
 
+# Opt-in local image generation (--art / KAS_ART): render PNGs with a local
+# diffusion model (FLUX via mflux on the Apple GPU). The image bytes are written
+# to disk, not returned to the model.
+IMAGE_TOOLS: list[dict] = [
+    {
+        "name": "generate_image",
+        "description": (
+            "Generate an image with a LOCAL diffusion model and save it as a PNG. "
+            "Use for game sprites, textures, icons, or concept art. Write a detailed "
+            "prompt (subject, style, view/angle, background). The PNG is written to "
+            "disk and the file path is returned — the image is NOT shown to you. For "
+            "a CONSISTENT set of assets (e.g. a sprite sheet), keep the style wording "
+            "identical across calls and pass a fixed integer `seed` per asset."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "prompt": {"type": "string", "description": "Detailed description: subject, style, view/angle, background"},
+                "path": {"type": "string", "description": "Output PNG path (relative to workdir; default assets/generated/<slug>.png)"},
+                "seed": {"type": "integer", "description": "Fix for reproducible / consistent results"},
+                "steps": {"type": "integer", "description": "Inference steps (default suits distilled FLUX)"},
+            },
+            "required": ["prompt"],
+        },
+    },
+]
+
 TOOLS: list[dict] = [
     {
         "name": "bash",
