@@ -31,11 +31,10 @@ out_dir = 'ttm-game/public/assets/vehicles'
 for vid, name, color, vtype in vehicles:
     path = f'{out_dir}/v{vid}.png'
     prompt = (
-        f"Top-down isometric view of a {name}, "
+        f"Isometric game sprite of a {name}, "
         f"primary color {color}, "
-        f"white background, "
-        f"Transport Tycoon game sprite style, "
-        f"clean vector art, centered, no text, no shadows"
+        f"Transport Tycoon style, "
+        f"clean vector art, white background, centered, no text, no shadows"
     )
     print(f"Generating {name}...")
     result, error = generate_image(prompt, workdir, path=path, seed=vid * 1234, steps=4)
