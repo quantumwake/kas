@@ -193,12 +193,12 @@ export default function App() {
     initAudio();
 
     if (tile.isMinimap) {
-      // Camera jump
-      dispatch({ type: ACTIONS.MOVE_CAMERA, payload: { x: 0, y: 0 } });
-      // We need to set camera directly - let's handle this differently
+      // Jump camera to clicked position
+      // We need a custom action for this - let's use MOVE_CAMERA with special flag
+      // Actually, we need to directly set camera position. Let's add a SET_CAMERA action.
+      // For now, let's just dispatch a custom update via the load mechanism
       const newGs = { ...gs, cameraX: tile.x, cameraY: tile.y };
-      dispatch({ type: ACTIONS.NEW_GAME, payload: { seed: 0, difficulty: gs.difficulty } });
-      // Actually, let's just update camera
+      dispatch({ type: ACTIONS.LOAD_GAME, payload: newGs });
       return;
     }
 
