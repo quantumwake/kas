@@ -411,6 +411,7 @@ export default function App() {
           state={gs}
           onTileClick={handleTileClick}
           onTileHover={handleTileHover}
+          onCameraMove={(pos) => dispatch({ type: 'SET_CAMERA', payload: pos })}
         />
 
         {/* Panels */}
