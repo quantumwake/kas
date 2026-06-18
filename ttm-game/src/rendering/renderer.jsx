@@ -139,7 +139,7 @@ function getTileCanvas(terrainType, surfaceType, featureType) {
 
 // ---- React Component ----
 
-export default function GameCanvas({ state, onTileClick, onTileHover, onCameraMove }) {
+export default function GameCanvas({ state, onTileClick, onTileHover, onCameraMove, onCameraZoom }) {
   const canvasRef = useRef(null);
   const minimapRef = useRef(null);
   const animFrameRef = useRef(null);
