@@ -10,7 +10,7 @@ dependencies = [
     "anthropic>=0.109",
     "huggingface-hub",
     "textual>=8.2.7",
-    "mflux>=0.18.0",
+    "mflux[art]>=0.18.0",
 ]
 
 # Opt-in tool backends. Each tool degrades gracefully when its package is
