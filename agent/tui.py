@@ -52,13 +52,25 @@ class ModelSelect(ModalScreen):
         super().__init__()
         self._models = models
         self._current = current
+        from scripts.select_model import model_info
+
+        self._info = {m["id"]: m for m in model_info()}
+
+    def _label(self, m: str) -> Text:
+        meta = self._info.get(m, {})
+        t = Text()
+        t.append("● " if m == self._current else "  ", style="#3fb950")
+        t.append(m)
+        if meta:
+            t.append(f"  {meta['size_h']}", style="#8a8a8a")
+            if not meta["complete"]:
+                t.append("  ⏳ partial", style="#ffa657")
+        return t
 
     def compose(self) -> ComposeResult:
         with Vertical(id="ms-box"):
             yield Static("select a model  ·  ↑↓ + Enter  ·  Esc to cancel", id="ms-title")
-            yield OptionList(
-                *[Option(("● " if m == self._current else "  ") + m, id=m) for m in self._models]
-            )
+            yield OptionList(*[Option(self._label(m), id=m) for m in self._models])
 
     def on_mount(self) -> None:
         self.query_one(OptionList).focus()
@@ -102,38 +114,60 @@ class SubagentView(ModalScreen):
 
 
 class FxBar(Static):
-    """A one-row ambient amber-CRT animation strip — purely for fun.
+    """A one-row ambient CRT animation strip that REACTS to what the agent is
+    doing — the palette and effect track the app's fx_mode (idle / prefill /
+    generating / tools / offline). Toggle with /fx. One line, so it's cheap.
 
-    Cycles through a few retro effects on its own (twinkle / equalizer wave /
-    comet sweep). Toggle with /fx. Updates a single line, so it's cheap.
+      idle       amber twinkle (calm)
+      prefill    orange breathing pulse (warming up)
+      generating cyan equalizer wave, faster (tokens flowing)
+      tools      violet comet sweep (working)
+      offline    dim red flatline
     """
 
     GLYPHS = "·✦*°⋆+•∙"
-    SHADES = ["#3a2000", "#7a4500", "#b86800", "#ffb000", "#ffd470"]
     BARS = " ▁▂▃▄▅▆▇█"
-    EFFECTS = ("twinkle", "wave", "comet")
+    # palette per state, dim → bright (last entry matches the status-line colour)
+    PALETTES = {
+        "idle":       ["#3a2000", "#7a4500", "#b86800", "#ffb000", "#ffd470"],  # amber
+        "prefill":    ["#3a1e00", "#7a3d00", "#b85c00", "#ffa657", "#ffd0a0"],  # orange
+        "generating": ["#06363b", "#0a6b74", "#1aa6b3", "#39d3e8", "#9af2ff"],  # cyan
+        "tools":      ["#2a1640", "#4f2d80", "#7a45c0", "#c792ea", "#e9d4ff"],  # violet
+        "offline":    ["#2a0000", "#5a0d0d", "#8a1f1f", "#ff5f5f", "#ffb0b0"],  # red
+    }
+    # (effect, frame-step) per state — bigger step = faster motion
+    MODES = {
+        "idle":       ("twinkle", 1),
+        "prefill":    ("pulse", 1),
+        "generating": ("wave", 2),
+        "tools":      ("comet", 2),
+        "offline":    ("flat", 1),
+    }
 
     def __init__(self) -> None:
         super().__init__("", id="fx")
         self._t = 0
-        self._effect = "twinkle"
         self._cells: list[float] = []
         self._glyphs: list[str] = []
 
     def on_mount(self) -> None:
-        self.set_interval(0.12, self._tick)
+        self.set_interval(0.1, self._tick)
 
     def _tick(self) -> None:
         w = max(0, self.size.width)
         if w == 0:
             return
-        self._t += 1
-        if self._t % 70 == 0:  # switch effect now and then, for variety
-            self._effect = random.choice(self.EFFECTS)
-        render = {"twinkle": self._twinkle, "wave": self._wave, "comet": self._comet}[self._effect]
-        self.update(render(w))
+        mode = getattr(self.app, "fx_mode", "idle")
+        if mode not in self.MODES:
+            mode = "idle"
+        effect, step = self.MODES[mode]
+        self._t += step
+        shades = self.PALETTES[mode]
+        render = {"twinkle": self._twinkle, "pulse": self._pulse,
+                  "wave": self._wave, "comet": self._comet, "flat": self._flat}[effect]
+        self.update(render(w, shades))
 
-    def _twinkle(self, w: int) -> Text:
+    def _twinkle(self, w: int, shades: list[str]) -> Text:
         if len(self._cells) != w:
             self._cells = [0.0] * w
             self._glyphs = [" "] * w
@@ -146,30 +180,39 @@ class FxBar(Static):
         t = Text()
         for i in range(w):
             v = self._cells[i]
-            if v < 0.12:
-                t.append(" ")
-            else:
-                t.append(self._glyphs[i], style=self.SHADES[min(4, int(v * 5))])
+            t.append(" " if v < 0.12 else self._glyphs[i], style=shades[min(4, int(v * 5))])
         return t
 
-    def _wave(self, w: int) -> Text:
+    def _wave(self, w: int, shades: list[str]) -> Text:
         t = Text()
         for col in range(w):
             y = math.sin(col * 0.25 + self._t * 0.2) * 0.5 + math.sin(col * 0.07 - self._t * 0.13) * 0.5
             idx = max(0, min(len(self.BARS) - 1, int((y + 1) / 2 * (len(self.BARS) - 1))))
-            t.append(self.BARS[idx], style=self.SHADES[1 + (idx * 3) // len(self.BARS)])
+            t.append(self.BARS[idx], style=shades[1 + (idx * 3) // len(self.BARS)])
         return t
 
-    def _comet(self, w: int) -> Text:
+    def _comet(self, w: int, shades: list[str]) -> Text:
         pos = (self._t * 2) % (w + 24) - 12
         t = Text()
         for i in range(w):
             d = abs(i - pos)
-            if d > 6:
-                t.append(" ")
-            else:
-                t.append("═" if d <= 2 else "─", style=self.SHADES[max(0, 4 - d)])
+            t.append(" " if d > 6 else ("═" if d <= 2 else "─"),
+                     style=shades[max(0, 4 - d)])
         return t
+
+    def _pulse(self, w: int, shades: list[str]) -> Text:
+        # a soft brightness "breath" plus a gentle gradient drift across the row
+        t = Text()
+        for col in range(w):
+            b = (math.sin(self._t * 0.12 + col * 0.06) + 1) / 2  # 0..1
+            t.append(self.BARS[1 + int(b * (len(self.BARS) - 2))],
+                     style=shades[min(4, int(b * 5))])
+        return t
+
+    def _flat(self, w: int, shades: list[str]) -> Text:
+        # dim, sparse dotted line that barely flickers — "asleep"
+        on = (self._t // 6) % 2 == 0
+        return Text("".join("·" if (i % 6 == 0 and on) else " " for i in range(w)), style=shades[1])
 
 
 class PasteInput(Input):
@@ -357,6 +400,7 @@ class AgentApp(App):
         self.store = store or core.SessionStore(workdir)
         self.msg_q: "queue.Queue[str | None]" = queue.Queue()
         self.busy = False
+        self.fx_mode = "idle"  # current state, drives the ambient FxBar animation
         self.confirming = False
         self.turns = 0
         self._alive = True
@@ -747,21 +791,24 @@ class AgentApp(App):
                 ping = f" · ping {age:g}s ago"
             stale = age is not None and age > 20  # pings should arrive ~every 5s
             if not up:
-                conn, conn_style, work = "○ offline", "#ff5f5f", "server unreachable"
+                conn, conn_style, work, mode = "○ offline", "#ff5f5f", "server unreachable", "offline"
             elif s.get("active") and s.get("phase") == "prefill":
                 conn = "◓ prefill" if not stale else "◓ prefill ⚠"
                 conn_style = "#ffa657" if not stale else "#ff5f5f"  # amber, red if pings stalled
                 work = (f"{s.get('processed', 0)}/{s.get('total', '?')} tok "
                         f"(cache {s.get('cached', 0)}) · {s.get('elapsed', 0):.0f}s{ping}")
+                mode = "prefill"
             elif s.get("active"):
                 conn = "◉ streaming" if not stale else "◉ streaming ⚠"
                 conn_style = "#39d3e8" if not stale else "#ff5f5f"  # cyan, red if pings stalled
                 work = (f"{s.get('generated', 0)} tok @ {s.get('tps', 0)} tok/s "
                         f"· {s.get('elapsed', 0):.0f}s{ping}")
+                mode = "generating"
             elif self.busy:
-                conn, conn_style, work = "◌ tools", "#c792ea", "running tools"  # violet
+                conn, conn_style, work, mode = "◌ tools", "#c792ea", "running tools", "tools"  # violet
             else:
-                conn, conn_style, work = "● live", "#3fb950", "idle"  # green
+                conn, conn_style, work, mode = "● live", "#3fb950", "idle", "idle"  # green
+            self.fx_mode = mode  # drive the ambient FxBar animation by current state
             line = Text()
             line.append(conn + " ", style=conn_style)
             line.append(f"· {self.model} · yolo {'ON' if self.runner.yolo else 'off'} · {work}")
