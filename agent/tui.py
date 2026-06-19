@@ -31,7 +31,7 @@ from scripts.select_model import downloaded_models
 
 PLACEHOLDER = "task or steering · / for commands · exit"
 COMMANDS = ["/yolo", "/rag", "/rag enable", "/rag disable", "/subagents", "/status",
-            "/compact", "/fx", "/stop", "/pause", "/model", "exit"]
+            "/ctx", "/ctx max", "/ctx auto", "/kv", "/art", "/compact", "/fx", "/stop", "/pause", "/model", "exit"]
 
 
 class ModelSelect(ModalScreen):
@@ -52,13 +52,25 @@ class ModelSelect(ModalScreen):
         super().__init__()
         self._models = models
         self._current = current
+        from scripts.select_model import model_info
+
+        self._info = {m["id"]: m for m in model_info()}
+
+    def _label(self, m: str) -> Text:
+        meta = self._info.get(m, {})
+        t = Text()
+        t.append("● " if m == self._current else "  ", style="#3fb950")
+        t.append(m)
+        if meta:
+            t.append(f"  {meta['size_h']}", style="#8a8a8a")
+            if not meta["complete"]:
+                t.append("  ⏳ partial", style="#ffa657")
+        return t
 
     def compose(self) -> ComposeResult:
         with Vertical(id="ms-box"):
             yield Static("select a model  ·  ↑↓ + Enter  ·  Esc to cancel", id="ms-title")
-            yield OptionList(
-                *[Option(("● " if m == self._current else "  ") + m, id=m) for m in self._models]
-            )
+            yield OptionList(*[Option(self._label(m), id=m) for m in self._models])
 
     def on_mount(self) -> None:
         self.query_one(OptionList).focus()
@@ -102,38 +114,72 @@ class SubagentView(ModalScreen):
 
 
 class FxBar(Static):
-    """A one-row ambient amber-CRT animation strip — purely for fun.
+    """A one-row ambient CRT animation strip that REACTS to what the agent is
+    doing — the palette and effect track the app's fx_mode (idle / prefill /
+    generating / tools / offline). Toggle with /fx. One line, so it's cheap.
 
-    Cycles through a few retro effects on its own (twinkle / equalizer wave /
-    comet sweep). Toggle with /fx. Updates a single line, so it's cheap.
+      idle       amber twinkle (calm)
+      prefill    orange breathing pulse (warming up)
+      generating cyan equalizer wave, faster (tokens flowing)
+      tools      violet comet sweep (working)
+      offline    dim red flatline
     """
 
     GLYPHS = "·✦*°⋆+•∙"
-    SHADES = ["#3a2000", "#7a4500", "#b86800", "#ffb000", "#ffd470"]
     BARS = " ▁▂▃▄▅▆▇█"
-    EFFECTS = ("twinkle", "wave", "comet")
+    BRAILLE = " ⠁⠃⠇⡇⣇⣧⣷⣿"
+    # palette per state, dim → bright (last entry matches the status-line colour)
+    PALETTES = {
+        "idle":       ["#3a2000", "#7a4500", "#b86800", "#ffb000", "#ffd470"],  # amber
+        "prefill":    ["#3a1e00", "#7a3d00", "#b85c00", "#ffa657", "#ffd0a0"],  # orange
+        "generating": ["#06363b", "#0a6b74", "#1aa6b3", "#39d3e8", "#9af2ff"],  # cyan
+        "tools":      ["#2a1640", "#4f2d80", "#7a45c0", "#c792ea", "#e9d4ff"],  # violet
+        "offline":    ["#2a0000", "#5a0d0d", "#8a1f1f", "#ff5f5f", "#ffb0b0"],  # red
+    }
+    # (effect, frame-step) per state — bigger step = faster motion. prefill shows
+    # a real progress bar; generating's wave speeds up with live tok/s.
+    MODES = {
+        "idle":       ("twinkle", 1),
+        "prefill":    ("progress", 1),
+        "generating": ("wave", 2),
+        "tools":      ("comet", 2),
+        "offline":    ("flat", 1),
+    }
+    # effects a user can pin via `/fx <name>`
+    EFFECTS = ("twinkle", "pulse", "wave", "comet", "plasma", "scanline", "fire",
+               "starfield", "braille", "progress", "heartbeat", "flat")
 
     def __init__(self) -> None:
         super().__init__("", id="fx")
         self._t = 0
-        self._effect = "twinkle"
+        self._pin: str | None = None  # forced effect (/fx <name>); None = state-reactive
         self._cells: list[float] = []
         self._glyphs: list[str] = []
+        self._stars: list[list[float]] = []
 
     def on_mount(self) -> None:
-        self.set_interval(0.12, self._tick)
+        self.set_interval(0.1, self._tick)
+
+    def _stats(self) -> dict:
+        return getattr(self.app, "fx_stats", None) or {}
 
     def _tick(self) -> None:
         w = max(0, self.size.width)
         if w == 0:
             return
-        self._t += 1
-        if self._t % 70 == 0:  # switch effect now and then, for variety
-            self._effect = random.choice(self.EFFECTS)
-        render = {"twinkle": self._twinkle, "wave": self._wave, "comet": self._comet}[self._effect]
-        self.update(render(w))
+        mode = getattr(self.app, "fx_mode", "idle")
+        if mode not in self.MODES:
+            mode = "idle"
+        if self._pin:
+            effect, step, shades = self._pin, 2, self.PALETTES[mode]
+        else:
+            effect, step = self.MODES[mode]
+            shades = self.PALETTES[mode]
+        self._t += step
+        fn = getattr(self, "_" + effect, self._twinkle)
+        self.update(fn(w, shades))
 
-    def _twinkle(self, w: int) -> Text:
+    def _twinkle(self, w: int, shades: list[str]) -> Text:
         if len(self._cells) != w:
             self._cells = [0.0] * w
             self._glyphs = [" "] * w
@@ -146,29 +192,143 @@ class FxBar(Static):
         t = Text()
         for i in range(w):
             v = self._cells[i]
-            if v < 0.12:
-                t.append(" ")
-            else:
-                t.append(self._glyphs[i], style=self.SHADES[min(4, int(v * 5))])
+            t.append(" " if v < 0.12 else self._glyphs[i], style=shades[min(4, int(v * 5))])
         return t
 
-    def _wave(self, w: int) -> Text:
+    def _wave(self, w: int, shades: list[str]) -> Text:
+        # speed tracks live decode rate — fast generation visibly rips
+        tps = self._stats().get("tps") or 12
+        spd = 0.12 + min(40.0, float(tps)) / 40.0 * 0.4
         t = Text()
         for col in range(w):
-            y = math.sin(col * 0.25 + self._t * 0.2) * 0.5 + math.sin(col * 0.07 - self._t * 0.13) * 0.5
+            y = math.sin(col * 0.25 + self._t * spd) * 0.5 + math.sin(col * 0.07 - self._t * 0.13) * 0.5
             idx = max(0, min(len(self.BARS) - 1, int((y + 1) / 2 * (len(self.BARS) - 1))))
-            t.append(self.BARS[idx], style=self.SHADES[1 + (idx * 3) // len(self.BARS)])
+            t.append(self.BARS[idx], style=shades[1 + (idx * 3) // len(self.BARS)])
         return t
 
-    def _comet(self, w: int) -> Text:
+    def _comet(self, w: int, shades: list[str]) -> Text:
         pos = (self._t * 2) % (w + 24) - 12
         t = Text()
         for i in range(w):
             d = abs(i - pos)
-            if d > 6:
-                t.append(" ")
+            t.append(" " if d > 6 else ("═" if d <= 2 else "─"), style=shades[max(0, 4 - d)])
+        return t
+
+    def _pulse(self, w: int, shades: list[str]) -> Text:
+        t = Text()
+        for col in range(w):
+            b = (math.sin(self._t * 0.12 + col * 0.06) + 1) / 2
+            t.append(self.BARS[1 + int(b * (len(self.BARS) - 2))], style=shades[min(4, int(b * 5))])
+        return t
+
+    def _flat(self, w: int, shades: list[str]) -> Text:
+        on = (self._t // 6) % 2 == 0
+        return Text("".join("·" if (i % 6 == 0 and on) else " " for i in range(w)), style=shades[1])
+
+    def _plasma(self, w: int, shades: list[str]) -> Text:
+        t = Text()
+        for col in range(w):
+            v = (math.sin(col * 0.20 + self._t * 0.10)
+                 + math.sin(col * 0.07 - self._t * 0.07)
+                 + math.sin((col + self._t) * 0.13)) / 3
+            b = (v + 1) / 2
+            t.append(self.BARS[1 + int(b * (len(self.BARS) - 2))], style=shades[min(4, int(b * 5))])
+        return t
+
+    def _scanline(self, w: int, shades: list[str]) -> Text:
+        head = (self._t * 1.5) % (w + 1)
+        t = Text()
+        for i in range(w):
+            d = abs(i - head)
+            if d < 1.5:
+                ch, sh = "█", 4
+            elif d < 4:
+                ch, sh = "▓", 3
+            elif d < 8:
+                ch, sh = "░", 2
             else:
-                t.append("═" if d <= 2 else "─", style=self.SHADES[max(0, 4 - d)])
+                ch, sh = ("·" if i % 5 == 0 else " "), 0
+            t.append(ch, style=shades[sh])
+        return t
+
+    def _fire(self, w: int, shades: list[str]) -> Text:
+        if len(self._cells) != w:
+            self._cells = [0.0] * w
+        for i in range(w):
+            self._cells[i] = max(0.0, self._cells[i] * 0.7 + random.uniform(-0.08, 0.08))
+            if random.random() < 0.15:
+                self._cells[i] = random.random()
+        t = Text()
+        for v in self._cells:
+            idx = min(len(self.BARS) - 1, int(v * (len(self.BARS) - 1)))
+            t.append(self.BARS[idx], style=shades[min(4, int(v * 5))])
+        return t
+
+    def _starfield(self, w: int, shades: list[str]) -> Text:
+        if len(self._cells) != w or not self._stars:
+            self._cells = [0.0] * w
+            self._stars = [[random.uniform(0, w), random.uniform(0.2, 1.0)]
+                           for _ in range(max(3, w // 12))]
+        glyph = [" "] * w
+        sh = [0] * w
+        for s in self._stars:
+            s[0] += s[1] * 0.6  # drift; brighter (nearer) stars move faster
+            if s[0] >= w:
+                s[0], s[1] = 0.0, random.uniform(0.2, 1.0)
+            i = int(s[0])
+            if 0 <= i < w:
+                glyph[i] = random.choice(self.GLYPHS) if s[1] > 0.7 else "·"
+                sh[i] = min(4, int(s[1] * 5))
+        t = Text()
+        for ch, s in zip(glyph, sh):
+            t.append(ch, style=shades[s])
+        return t
+
+    def _braille(self, w: int, shades: list[str]) -> Text:
+        t = Text()
+        for col in range(w):
+            y = math.sin(col * 0.3 + self._t * 0.25) * 0.5 + math.sin(col * 0.1 - self._t * 0.1) * 0.5
+            idx = max(0, min(len(self.BRAILLE) - 1, int((y + 1) / 2 * (len(self.BRAILLE) - 1))))
+            t.append(self.BRAILLE[idx], style=shades[1 + (idx * 3) // len(self.BRAILLE)])
+        return t
+
+    def _progress(self, w: int, shades: list[str]) -> Text:
+        # real prefill progress when the server reports processed/total; else a
+        # gentle indeterminate sweep.
+        s = self._stats()
+        total, done = s.get("total") or 0, s.get("processed") or 0
+        t = Text()
+        if total:
+            fill = int(done / total * w)
+            for i in range(w):
+                if i < fill:
+                    t.append("█", style=shades[3])
+                elif i == fill:
+                    t.append("▌", style=shades[4])
+                else:
+                    t.append("·" if i % 4 == 0 else " ", style=shades[1])
+        else:
+            head = (self._t * 1.2) % (w + 8)
+            for i in range(w):
+                t.append("█" if abs(i - head) < 3 else ("·" if i % 4 == 0 else " "),
+                         style=shades[3 if abs(i - head) < 3 else 1])
+        return t
+
+    def _heartbeat(self, w: int, shades: list[str]) -> Text:
+        # a traveling EKG spike over a dim baseline
+        pos = int(self._t) % w if w else 0
+        t = Text()
+        for i in range(w):
+            d = (i - pos) % w
+            if d == 0:
+                ch, sh = "█", 4
+            elif d == 1:
+                ch, sh = "▆", 3
+            elif d == 2:
+                ch, sh = "▂", 2
+            else:
+                ch, sh = "─", 1
+            t.append(ch, style=shades[sh])
         return t
 
 
@@ -338,6 +498,8 @@ class AgentApp(App):
         net: bool = False,
         rag: bool = False,
         context_limit: int | None = None,
+        sandbox: bool = False,
+        art: bool = False,
     ):
         super().__init__()
         self.client = client
@@ -350,11 +512,13 @@ class AgentApp(App):
         self.io = TuiIO(self)
         self.runner = core.ToolRunner(
             workdir, yolo=yolo, io=self.io, checkpoint=checkpoint, net=net, rag=rag,
-            context_limit=context_limit,
+            context_limit=context_limit, sandbox=sandbox, compact_at=compact_at, art=art,
         )
         self.store = store or core.SessionStore(workdir)
         self.msg_q: "queue.Queue[str | None]" = queue.Queue()
         self.busy = False
+        self.fx_mode = "idle"  # current state, drives the ambient FxBar animation
+        self.fx_stats: dict = {}  # live tps/processed/total for data-driven fx
         self.confirming = False
         self.turns = 0
         self._alive = True
@@ -429,11 +593,33 @@ class AgentApp(App):
         threading.Thread(target=do_swap, daemon=True).start()
 
     def action_interrupt(self) -> None:
+        # Escape is a priority binding, so it fires app-wide — even over a modal,
+        # whose own escape→dismiss would otherwise be shadowed. So if a modal is
+        # open (subagent view, model picker), close THAT first instead of
+        # interrupting the response running underneath.
+        if len(self.screen_stack) > 1:
+            self.screen.dismiss()
+            return
         if self.busy:
             self.io.abort.set()
+            # Aborting the stream only takes effect once tokens flow — a long
+            # prefill emits none, so also tell the server to drop the job NOW.
+            self._cancel_server()
             self.body_write(Text("[interrupting…]", style="yellow"))
         else:
             self.body_write(Text("[nothing to interrupt]", style="dim"))
+
+    def _cancel_server(self) -> None:
+        """Fire POST /v1/cancel off-thread so Escape stays instant."""
+        base = self.base_url.rstrip("/")
+
+        def post() -> None:
+            try:
+                httpx.post(base + "/v1/cancel", timeout=3)
+            except Exception:
+                pass
+
+        threading.Thread(target=post, daemon=True).start()
 
     def action_pause(self) -> None:
         """Stop at a safe boundary, save (marked paused), exit. Resume continues."""
@@ -578,10 +764,26 @@ class AgentApp(App):
                         self.push_screen(SubagentView(match))
                     else:
                         self.body_write(Text(f"no subagent {arg!r} — /subagents to list", style="red"))
-            elif text == "/fx":
+            elif text == "/fx" or text.startswith("/fx "):
+                arg = text[len("/fx"):].strip().lower()
                 fx = self.query_one("#fx")
-                fx.display = not fx.display
-                self.body_write(Text(f"fx {'on' if fx.display else 'off'}", style="yellow"))
+                if arg in ("", "toggle"):
+                    fx.display = not fx.display
+                    msg = f"fx {'on' if fx.display else 'off'}"
+                elif arg == "on":
+                    fx.display = True; msg = "fx on"
+                elif arg == "off":
+                    fx.display = False; msg = "fx off"
+                elif arg in ("auto", "reset"):
+                    fx._pin = None; fx.display = True; msg = "fx auto (reacts to state)"
+                elif arg in ("list", "?"):
+                    msg = "fx: " + ", ".join(FxBar.EFFECTS) + " · auto · on · off"
+                elif arg in FxBar.EFFECTS:
+                    fx._pin = arg; fx.display = True; msg = f"fx pinned: {arg}  (/fx auto to unpin)"
+                else:
+                    msg = f"unknown fx {arg!r} — try /fx list"
+                self.body_write(Text(msg, style="yellow"))
+                return
             elif text.startswith("/rag"):
                 arg = text[len("/rag"):].strip().lower()
                 if arg in ("enable", "on"):
@@ -594,6 +796,20 @@ class AgentApp(App):
                     Text(f"recall {'ENABLED — local code/docs/memory search available' if self.runner.rag else 'DISABLED'}",
                          style="yellow")
                 )
+            elif text == "/ctx" or text.startswith("/ctx "):
+                from agent.core.compaction import ctx_command
+                self.body_write(Text(ctx_command(self.runner, text[len("/ctx"):]), style="yellow"))
+                return
+            elif text == "/kv" or text.startswith("/kv "):
+                self.body_write(Text(self.runner.kv_status(text[len("/kv"):]), style="yellow"))
+                return
+            elif text == "/art":
+                self.runner.art = not self.runner.art
+                self.body_write(Text(
+                    f"image generation {'ENABLED — generate_image available' if self.runner.art else 'DISABLED'}"
+                    + ("" if self.runner.art else "") + " (needs the 'art' extra: uv add mflux)",
+                    style="yellow"))
+                return
             elif text == "/status":
                 self.body_write(
                     Text(
@@ -605,8 +821,8 @@ class AgentApp(App):
             else:
                 self.body_write(
                     Text(
-                        "commands: /yolo  /rag [enable|disable]  /subagents  /subagent <n>  /status  "
-                        "/compact  /model  /fx  /stop (Esc)  /pause (^P) · exit",
+                        "commands: /yolo  /rag [enable|disable]  /ctx [<n>|max|auto]  /subagents  "
+                        "/subagent <n>  /status  /compact  /model  /fx  /stop (Esc)  /pause (^P) · exit",
                         style="yellow",
                     )
                 )
@@ -653,8 +869,7 @@ class AgentApp(App):
                     messages.append({"role": "user", "content": task})
                 core.agent_turn(
                     self.client, messages, self.runner, self.io,
-                    model=self.model, max_tokens=self.max_tokens,
-                    compact_at=self.compact_at, store=self.store,
+                    model=self.model, max_tokens=self.max_tokens, store=self.store,
                 )
                 # steering submitted after the final response starts a new turn
                 leftovers = self.io.drain_steers()
@@ -662,8 +877,7 @@ class AgentApp(App):
                     messages.append({"role": "user", "content": "\n".join(leftovers)})
                     core.agent_turn(
                         self.client, messages, self.runner, self.io,
-                        model=self.model, max_tokens=self.max_tokens,
-                        compact_at=self.compact_at, store=self.store,
+                        model=self.model, max_tokens=self.max_tokens, store=self.store,
                     )
                     leftovers = self.io.drain_steers()
             except anthropic.APIError as exc:
@@ -711,21 +925,26 @@ class AgentApp(App):
                 ping = f" · ping {age:g}s ago"
             stale = age is not None and age > 20  # pings should arrive ~every 5s
             if not up:
-                conn, conn_style, work = "○ offline", "#ff5f5f", "server unreachable"
+                conn, conn_style, work, mode = "○ offline", "#ff5f5f", "server unreachable", "offline"
             elif s.get("active") and s.get("phase") == "prefill":
                 conn = "◓ prefill" if not stale else "◓ prefill ⚠"
                 conn_style = "#ffa657" if not stale else "#ff5f5f"  # amber, red if pings stalled
                 work = (f"{s.get('processed', 0)}/{s.get('total', '?')} tok "
                         f"(cache {s.get('cached', 0)}) · {s.get('elapsed', 0):.0f}s{ping}")
+                mode = "prefill"
             elif s.get("active"):
                 conn = "◉ streaming" if not stale else "◉ streaming ⚠"
                 conn_style = "#39d3e8" if not stale else "#ff5f5f"  # cyan, red if pings stalled
                 work = (f"{s.get('generated', 0)} tok @ {s.get('tps', 0)} tok/s "
                         f"· {s.get('elapsed', 0):.0f}s{ping}")
+                mode = "generating"
             elif self.busy:
-                conn, conn_style, work = "◌ tools", "#c792ea", "running tools"  # violet
+                conn, conn_style, work, mode = "◌ tools", "#c792ea", "running tools", "tools"  # violet
             else:
-                conn, conn_style, work = "● live", "#3fb950", "idle"  # green
+                conn, conn_style, work, mode = "● live", "#3fb950", "idle", "idle"  # green
+            self.fx_mode = mode  # drive the ambient FxBar animation by current state
+            self.fx_stats = {"tps": s.get("tps"), "processed": s.get("processed"),
+                             "total": s.get("total"), "ping_age": age}
             line = Text()
             line.append(conn + " ", style=conn_style)
             line.append(f"· {self.model} · yolo {'ON' if self.runner.yolo else 'off'} · {work}")
