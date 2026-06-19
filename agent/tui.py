@@ -31,7 +31,7 @@ from scripts.select_model import downloaded_models
 
 PLACEHOLDER = "task or steering · / for commands · exit"
 COMMANDS = ["/yolo", "/rag", "/rag enable", "/rag disable", "/subagents", "/status",
-            "/ctx", "/ctx max", "/ctx auto", "/art", "/compact", "/fx", "/stop", "/pause", "/model", "exit"]
+            "/ctx", "/ctx max", "/ctx auto", "/kv", "/art", "/compact", "/fx", "/stop", "/pause", "/model", "exit"]
 
 
 class ModelSelect(ModalScreen):
@@ -599,6 +599,9 @@ class AgentApp(App):
             elif text == "/ctx" or text.startswith("/ctx "):
                 from agent.core.compaction import ctx_command
                 self.body_write(Text(ctx_command(self.runner, text[len("/ctx"):]), style="yellow"))
+                return
+            elif text == "/kv" or text.startswith("/kv "):
+                self.body_write(Text(self.runner.kv_status(text[len("/kv"):]), style="yellow"))
                 return
             elif text == "/art":
                 self.runner.art = not self.runner.art

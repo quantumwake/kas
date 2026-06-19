@@ -252,8 +252,10 @@ def main() -> None:
             elif user == "/art":
                 runner.art = not runner.art
                 print(f"image generation {'ON (needs mflux: uv add mflux)' if runner.art else 'OFF'}")
+            elif user == "/kv" or user.startswith("/kv "):
+                print(runner.kv_status(user[len("/kv"):]))
             else:
-                print("commands: /yolo  /ctx [<tokens>|max|auto|valve on|valve off]  /art  /status  exit")
+                print("commands: /yolo  /ctx [<tokens>|max|auto|valve on|valve off]  /kv  /art  /status  exit")
             continue
         messages.append({"role": "user", "content": user})
         try:

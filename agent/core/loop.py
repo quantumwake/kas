@@ -121,7 +121,7 @@ def agent_turn(
     # Tell the server which session dir to persist/rehydrate this thread's KV
     # cache under (server only acts on it when KV persistence is enabled).
     headers = {"x-agent-thread": thread}
-    if store is not None and getattr(store, "dir", None) is not None:
+    if store is not None and getattr(store, "dir", None) is not None and getattr(runner, "persist_kv", True):
         headers["x-agent-session-dir"] = str(store.dir)
     truncations = 0
     rounds = 0

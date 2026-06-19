@@ -141,4 +141,19 @@ with tempfile.TemporaryDirectory() as tmp:
     assert "--output" in cmd and "--seed" in cmd and "7" in cmd, cmd
     print("generate_image: OK")
 
+# ---------------------------------------------------------------------------
+# /kv command (toggle + status), no server needed
+# ---------------------------------------------------------------------------
+
+with tempfile.TemporaryDirectory() as tmp:
+    r = runner(tmp)
+    assert r.persist_kv is True
+    out = r.kv_status("off")
+    assert r.persist_kv is False and "OFF" in out, (out, r.persist_kv)
+    out = r.kv_status("on")
+    assert r.persist_kv is True and "ON" in out, (out, r.persist_kv)
+    out = r.kv_status("")  # query only; count is 0 in a fresh tmp workdir
+    assert "delta file(s)" in out, out
+    print("kv_status: OK")
+
 print("all tool tests passed")

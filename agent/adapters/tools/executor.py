@@ -60,6 +60,7 @@ class ToolRunner:
         self.tps_valve = True       # decode-speed relief valve on/off
         self.hard_limit_frac = 0.85  # fraction of native window that forces compaction
         self.last_input_tokens = 0   # most recent prompt size, for /ctx display
+        self.persist_kv = True       # send the session dir so the server persists KV (/kv)
 
     # -- workspace checkpointing ----------------------------------------------
 
@@ -208,6 +209,24 @@ class ToolRunner:
 
     def tool_web_fetch(self, url: str) -> tuple[str, bool]:
         return web_fetch(url)
+
+    def kv_status(self, arg: str = "") -> str:
+        """Handle /kv [on|off]: toggle whether this session persists its KV cache
+        to disk (for warm --resume) and report the on-disk delta count."""
+        import pathlib
+
+        a = (arg or "").strip().lower()
+        if a in ("on", "enable"):
+            self.persist_kv = True
+        elif a in ("off", "disable"):
+            self.persist_kv = False
+        d = pathlib.Path(self.workdir) / ".agent" / "sessions"
+        # best-effort count across this workdir's kvcache dirs (main thread)
+        n = sum(len(list(p.glob("*.safetensors"))) for p in d.glob("*/kvcache/main")) if d.exists() else 0
+        return (
+            f"KV-resume {'ON' if self.persist_kv else 'OFF'} "
+            f"(server must also have KAS_KV_PERSIST!=0) · {n} delta file(s) on disk"
+        )
 
     def tool_generate_image(
         self, prompt: str, path: str | None = None, seed: int | None = None, steps: int | None = None
