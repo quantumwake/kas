@@ -41,6 +41,9 @@ class FakeEngine:
             yield GenChunk(text=text[i : i + 7])
         yield GenChunk(text="", done=True, prompt_tokens=42, generation_tokens=33, finish_reason="stop")
 
+    def request_cancel(self):
+        return False  # no job active in this synchronous fake
+
 
 async def main() -> None:
     app_module.engine = FakeEngine()
@@ -88,6 +91,12 @@ async def main() -> None:
     tool = next(b for b in final.content if b.type == "tool_use")
     assert tool.name == "get_weather" and tool.input == {"city": "Paris"}
     print("streaming: OK")
+
+    # --- /v1/cancel is wired and returns the active-job flag ---
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as hc:
+        body = (await hc.post("/v1/cancel")).json()
+    assert body["ok"] is True and body["active"] is False, body
+    print("cancel endpoint: OK")
 
     # --- validation errors use the Anthropic error envelope ---
     try:

@@ -440,9 +440,24 @@ class AgentApp(App):
             return
         if self.busy:
             self.io.abort.set()
+            # Aborting the stream only takes effect once tokens flow — a long
+            # prefill emits none, so also tell the server to drop the job NOW.
+            self._cancel_server()
             self.body_write(Text("[interrupting…]", style="yellow"))
         else:
             self.body_write(Text("[nothing to interrupt]", style="dim"))
+
+    def _cancel_server(self) -> None:
+        """Fire POST /v1/cancel off-thread so Escape stays instant."""
+        base = self.base_url.rstrip("/")
+
+        def post() -> None:
+            try:
+                httpx.post(base + "/v1/cancel", timeout=3)
+            except Exception:
+                pass
+
+        threading.Thread(target=post, daemon=True).start()
 
     def action_pause(self) -> None:
         """Stop at a safe boundary, save (marked paused), exit. Resume continues."""

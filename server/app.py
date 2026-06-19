@@ -112,6 +112,16 @@ def select_model(payload: dict[str, Any]):
     return {"ok": True, "model": engine.model_id, "dialect": engine.dialect.name}
 
 
+@app.post("/v1/cancel")
+def cancel_generation() -> dict[str, Any]:
+    """Interrupt the in-flight generation NOW — including a long prefill (which
+    otherwise can't be cancelled until it finishes). Lets a client stop quickly
+    and frees the worker so a queued model swap can proceed."""
+    if engine is None:
+        return {"ok": False, "active": False}
+    return {"ok": True, "active": engine.request_cancel()}
+
+
 @app.get("/v1/stats")
 def live_stats() -> dict[str, Any]:
     """Live generation progress — polled by clients while the stream is quiet

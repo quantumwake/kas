@@ -49,10 +49,17 @@ class GenChunk:
     finish_reason: str | None = None  # "stop" | "length" | "stop_sequence"
 
 
+class _Cancelled(Exception):
+    """Raised from the prefill progress callback to abort an in-flight job.
+    Prefill emits no tokens, so checking a flag between yields can't interrupt
+    it — raising from the callback mlx_lm invokes during prefill can."""
+
+
 class Engine:
     def __init__(self, model_id: str) -> None:
         self.model_id = model_id
         self._jobs: queue.Queue[tuple[queue.Queue, threading.Event, Callable]] = queue.Queue()
+        self._active_cancel: "threading.Event | None" = None  # in-flight job's cancel flag
         self._ready = threading.Event()
         self._load_error: BaseException | None = None
         # Live generation stats, readable from any thread (GET /v1/stats).
@@ -110,6 +117,7 @@ class Engine:
 
         while True:
             out_q, cancel, produce = self._jobs.get()
+            self._active_cancel = cancel  # exposed to request_cancel() + on_prefill
             try:
                 for item in produce():
                     if cancel.is_set():
@@ -118,6 +126,8 @@ class Engine:
                 out_q.put(("done", None))
             except BaseException as exc:  # propagate to the consumer
                 out_q.put(("error", exc))
+            finally:
+                self._active_cancel = None
 
     def _load_model(self, model_id: str) -> None:
         """Worker-thread only: load (or swap to) a model and reset all state."""
@@ -186,6 +196,18 @@ class Engine:
             yield "ok"
 
         list(self._submit(produce))
+
+    def request_cancel(self) -> bool:
+        """Signal the in-flight job (if any) to stop — interrupts a long prefill
+        (via the progress callback) and generation (between tokens). Callable
+        from any thread; returns whether a job was active. Lets a client abort
+        immediately instead of waiting for prefill to finish, which also frees
+        the worker so a queued model swap can run."""
+        c = self._active_cancel
+        if c is not None:
+            c.set()
+            return True
+        return False
 
     def _submit(self, produce: Callable[[], Iterator[Any]]) -> Iterator[Any]:
         out_q: queue.Queue = queue.Queue()
@@ -311,9 +333,14 @@ class Engine:
             last = None
             gen_ids: list[int] = []
             finish = "stop"
+            cancelled = False
             t_start = time.time()
 
             def on_prefill(processed: int, total: int) -> None:
+                # The only place a long prefill can be interrupted — mlx_lm calls
+                # this during prefill chunking; raising aborts it.
+                if self._active_cancel is not None and self._active_cancel.is_set():
+                    raise _Cancelled()
                 self.stats = {
                     "active": True,
                     "phase": "prefill",
@@ -377,12 +404,22 @@ class Engine:
                     yield GenChunk(text=text)
                 else:
                     finish = (last.finish_reason if last else None) or "stop"
+            except _Cancelled:
+                cancelled = True
+                finish = "cancelled"
             finally:
-                # The cache now holds the full prompt plus every generated token
-                # except the last sampled one (it was never fed back through).
-                slot["tokens"] = full + gen_ids[:-1]
+                if cancelled:
+                    # Interrupted (often mid-prefill): the cache is partial and
+                    # unusable — discard it so the next turn re-prefills cleanly.
+                    slot["cache"] = None
+                    slot["tokens"] = []
+                    slot["saved_offset"] = 0
+                else:
+                    # The cache now holds the full prompt plus every generated
+                    # token except the last (it was never fed back through).
+                    slot["tokens"] = full + gen_ids[:-1]
                 self.stats = {"active": False}
-            if persist_dir:
+            if persist_dir and not cancelled:
                 # Append this turn's KV delta to disk (worker thread → mlx-safe).
                 self._persist_kv_delta(cache_key, slot, persist_dir)
             yield GenChunk(
