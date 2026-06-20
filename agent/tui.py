@@ -141,23 +141,47 @@ class FxBar(Static):
         "tools":      ["#2a1640", "#4f2d80", "#7a45c0", "#c792ea", "#e9d4ff"],  # violet
         "offline":    ["#2a0000", "#5a0d0d", "#8a1f1f", "#ff5f5f", "#ffb0b0"],  # red
     }
-    # Per-state POOL of effects — the colour signals the state, but the effect
-    # rotates through the pool over time so it never gets boring. prefill is a
-    # real progress bar (informational, not rotated); offline is a flatline.
+    # Extra colour schemes the rotating states cycle through for variety.
+    PALETTE_POOL = [
+        ["#3a2000", "#7a4500", "#b86800", "#ffb000", "#ffd470"],  # amber
+        ["#0a2a4a", "#155a8a", "#2a8ac8", "#4ec3f0", "#a8e8ff"],  # ice
+        ["#06340a", "#0a7a1a", "#1aa82a", "#39e85a", "#9affb0"],  # matrix
+        ["#3a0a2a", "#7a155a", "#c82a9a", "#ff4ec3", "#ffa8e8"],  # magenta
+        ["#3a0a00", "#7a2500", "#c85000", "#ff8c1a", "#ffd470"],  # sunset
+        ["#063b3b", "#0a7474", "#1ab3b3", "#39e8e8", "#9afff0"],  # aqua
+        ["#1a0a3a", "#3d1d7a", "#6a2dc0", "#a05cf0", "#d4b0ff"],  # purple
+        ["#2a0000", "#7a1000", "#c83000", "#ff5f1a", "#ffb070"],  # ember
+        ["#222222", "#555555", "#888888", "#bbbbbb", "#ffffff"],  # mono
+        ["#ff5f5f", "#ffb000", "#3fe85a", "#39d3e8", "#c792ea"],  # rainbow (5 hues)
+        ["#ff5fa8", "#ff9d5f", "#ffe85f", "#5fe8a8", "#5fa8ff"],  # candy (5 hues)
+    ]
+    # Per-state POOL of effects — rotates over time so it never gets boring;
+    # rotating states also pick a random palette each switch (see _tick).
+    # prefill is a real progress bar (informational); offline is a flatline.
+    DECOR = ("twinkle", "plasma", "starfield", "fire", "pulse", "braille", "comet", "heartbeat",
+             "rain", "sine", "ripple", "dna", "marquee", "glitch", "larson", "bounce", "snake",
+             "meteor", "vu", "spectrum", "wipe", "binary", "firefly", "fireworks", "zigzag",
+             "throb", "morse", "lava", "worm", "aurora", "crossing", "glimmer", "ladder", "rotor",
+             "parallax", "wavefront", "symbars", "confetti", "noise")
     POOLS = {
-        "idle":       ("twinkle", "plasma", "starfield", "fire", "pulse", "braille", "comet",
-                       "heartbeat", "rain", "sine", "ripple", "dna", "marquee", "glitch",
-                       "larson", "bounce", "snake", "meteor", "vu"),
+        "idle":       DECOR,
         "prefill":    ("progress",),
-        "generating": ("wave", "plasma", "scanline", "braille", "vu", "dna", "meteor", "ripple"),
-        "tools":      ("comet", "scanline", "starfield", "plasma", "larson", "snake", "meteor", "glitch"),
+        "generating": ("wave", "plasma", "scanline", "braille", "vu", "dna", "meteor", "ripple",
+                       "spectrum", "zigzag", "throb", "lava", "aurora", "symbars", "rotor"),
+        "tools":      ("comet", "scanline", "starfield", "plasma", "larson", "snake", "meteor",
+                       "glitch", "wipe", "morse", "worm", "fireworks", "binary", "crossing",
+                       "parallax", "wavefront"),
         "offline":    ("flat",),
     }
-    FAST = {"wave", "comet", "scanline", "starfield", "larson", "snake", "meteor", "marquee"}
+    FAST = {"wave", "comet", "scanline", "starfield", "larson", "snake", "meteor", "marquee",
+            "wipe", "binary", "worm", "crossing", "parallax", "wavefront", "morse", "fireworks"}
     # effects a user can pin via `/fx <name>`
     EFFECTS = ("twinkle", "pulse", "wave", "comet", "plasma", "scanline", "fire", "starfield",
                "braille", "progress", "heartbeat", "flat", "larson", "bounce", "vu", "dna",
-               "ripple", "rain", "marquee", "glitch", "sine", "meteor", "snake")
+               "ripple", "rain", "marquee", "glitch", "sine", "meteor", "snake", "spectrum",
+               "wipe", "binary", "firefly", "fireworks", "zigzag", "throb", "morse", "lava",
+               "worm", "aurora", "crossing", "glimmer", "ladder", "rotor", "parallax",
+               "wavefront", "symbars", "confetti", "noise")
 
     def __init__(self) -> None:
         super().__init__("", id="fx")
@@ -168,6 +192,7 @@ class FxBar(Static):
         self._effect = "twinkle"
         self._cur: str | None = None  # last effect actually rendered (to reset buffers on change)
         self._pin: str | None = None  # forced effect (/fx <name>); None = rotate
+        self._palette: list[str] | None = None  # current colour scheme
         self._cells: list[float] = []
         self._glyphs: list[str] = []
         self._stars: list[list[float]] = []
@@ -186,17 +211,18 @@ class FxBar(Static):
         mode = getattr(self.app, "fx_mode", "idle")
         if mode not in self.POOLS:
             mode = "idle"
-        if self._pin:
-            effect = self._pin
-        else:
-            pool = self.POOLS[mode]
-            # rotate on a state change or when the dwell timer elapses
-            if mode != self._mode or self._frame >= self._rotate_at:
-                choices = [e for e in pool if e != self._effect] or list(pool)
-                self._effect = random.choice(choices)
-                self._mode = mode
-                self._rotate_at = self._frame + random.randint(100, 180)  # ~10–18s
-            effect = self._effect
+        # rotate on a state change or when the dwell timer elapses
+        if mode != self._mode or self._frame >= self._rotate_at or self._palette is None:
+            self._mode = mode
+            self._rotate_at = self._frame + random.randint(100, 180)  # ~10–18s
+            if not self._pin:
+                pool = self.POOLS[mode]
+                self._effect = random.choice([e for e in pool if e != self._effect] or list(pool))
+            # colour variety: rotating states cycle palettes; prefill/offline keep their signal
+            self._palette = (self.PALETTES[mode] if mode in ("prefill", "offline")
+                             else random.choice(self.PALETTE_POOL))
+        effect = self._pin or self._effect
+        shades = self._palette or self.PALETTES["idle"]
         # Effects share the _cells/_glyphs/_stars scratch buffers, so reset them
         # whenever the effect changes — the new one re-inits them at the current
         # width (prevents stale-length IndexErrors across effects).
@@ -205,7 +231,7 @@ class FxBar(Static):
             self._cur = effect
         self._t += 2 if effect in self.FAST else 1
         fn = getattr(self, "_" + effect, self._twinkle)
-        self.update(fn(w, self.PALETTES[mode]))
+        self.update(fn(w, shades))
 
     def _twinkle(self, w: int, shades: list[str]) -> Text:
         if len(self._cells) != w or len(self._glyphs) != w:
@@ -480,6 +506,206 @@ class FxBar(Static):
         for i in range(w):
             d = (head - i) % w
             t.append("█" if d < seg else " ", style=shades[max(0, 4 - d // 2)] if d < seg else shades[0])
+        return t
+
+    # --- second wave of effects -------------------------------------------
+
+    def _spectrum(self, w: int, shades: list[str]) -> Text:
+        n = len(shades)
+        t = Text()
+        for i in range(w):
+            k = (i + self._t) % (2 * n - 2)
+            t.append("█", style=shades[k if k < n else 2 * n - 2 - k])
+        return t
+
+    def _wipe(self, w: int, shades: list[str]) -> Text:
+        period = max(1, 2 * w)
+        p = self._t % period
+        edge = p if p < w else period - p
+        t = Text()
+        for i in range(w):
+            t.append("█" if i < edge else ("▌" if i == edge else " "),
+                     style=shades[4 if i == edge else (3 if i < edge else 0)])
+        return t
+
+    def _binary(self, w: int, shades: list[str]) -> Text:
+        if len(self._glyphs) != w:
+            self._glyphs = [random.choice("01  ") for _ in range(w)]
+        if self._t % 2 == 0:
+            self._glyphs = [random.choice("01  ")] + self._glyphs[:-1]
+        t = Text()
+        for ch in self._glyphs:
+            t.append(ch, style=shades[3 if ch in "01" else 0])
+        return t
+
+    def _firefly(self, w: int, shades: list[str]) -> Text:
+        if len(self._stars) < 2:
+            self._stars = [[random.uniform(0, w - 1), random.uniform(-1, 1)] for _ in range(max(2, w // 22))]
+        cells, sh = [" "] * w, [0] * w
+        for s in self._stars:
+            s[0] += s[1] * 0.7
+            if not (0 <= s[0] < w):
+                s[1] = -s[1]
+                s[0] = max(0, min(w - 1, s[0]))
+            if random.random() < 0.1:
+                s[1] += random.uniform(-0.3, 0.3)
+            j = int(s[0])
+            cells[j], sh[j] = random.choice("✦✺*•"), 4
+        t = Text()
+        for ch, k in zip(cells, sh):
+            t.append(ch, style=shades[k])
+        return t
+
+    def _fireworks(self, w: int, shades: list[str]) -> Text:
+        phase, cyc = self._t % 40, self._t // 40
+        c = (cyc * 37) % max(1, w)
+        t = Text()
+        for i in range(w):
+            d = abs(i - c)
+            if phase < 3 and d == 0:
+                t.append("✺", style=shades[4])
+            elif 0 < phase < 18 and d == phase:
+                t.append(random.choice("*✦•"), style=shades[max(0, 4 - phase // 5)])
+            else:
+                t.append(" ")
+        return t
+
+    def _zigzag(self, w: int, shades: list[str]) -> Text:
+        t = Text()
+        for col in range(w):
+            tw = (col + self._t) % 8
+            h = tw if tw < 4 else 8 - tw
+            t.append(self.BARS[1 + h], style=shades[1 + (h * 3) // 5])
+        return t
+
+    def _throb(self, w: int, shades: list[str]) -> Text:
+        c = (w / 2) or 1
+        b = (math.sin(self._t * 0.2) + 1) / 2
+        t = Text()
+        for i in range(w):
+            v = max(0.0, b - abs(i - c) / c * 0.8)
+            t.append(self.BARS[int(v * (len(self.BARS) - 1))], style=shades[min(4, int(v * 5))])
+        return t
+
+    def _morse(self, w: int, shades: list[str]) -> Text:
+        pat = "█ ███ █ █   "
+        off = self._t % len(pat)
+        t = Text()
+        for i in range(w):
+            ch = pat[(i + off) % len(pat)]
+            t.append(ch, style=shades[3 if ch != " " else 0])
+        return t
+
+    def _lava(self, w: int, shades: list[str]) -> Text:
+        t = Text()
+        for col in range(w):
+            v = (math.sin(col * 0.10 + self._t * 0.05) + math.sin(col * 0.04 - self._t * 0.03)) / 2
+            b = (v + 1) / 2
+            t.append(self.BARS[1 + int(b * (len(self.BARS) - 2))], style=shades[min(4, int(b * 5))])
+        return t
+
+    def _worm(self, w: int, shades: list[str]) -> Text:
+        seg = 6
+        head = self._t % (w + seg)
+        t = Text()
+        for i in range(w):
+            d = head - i
+            inside = 0 <= d < seg
+            t.append(("●" if d == 0 else "•") if inside else " ",
+                     style=shades[max(0, 4 - d)] if inside else shades[0])
+        return t
+
+    def _aurora(self, w: int, shades: list[str]) -> Text:
+        t = Text()
+        for col in range(w):
+            v = (math.sin(col * 0.08 + self._t * 0.06) + math.sin(col * 0.15 + self._t * 0.03)
+                 + math.sin(col * 0.03 - self._t * 0.04)) / 3
+            b = (v + 1) / 2
+            t.append(self.BARS[1 + int(b * (len(self.BARS) - 2))], style=shades[min(4, int(b * 5))])
+        return t
+
+    def _crossing(self, w: int, shades: list[str]) -> Text:
+        a = (self._t * 2) % (w + 8) - 4
+        b = w - ((self._t * 2) % (w + 8) - 4)
+        t = Text()
+        for i in range(w):
+            d = min(abs(i - a), abs(i - b))
+            t.append(" " if d > 4 else ("◆" if d == 0 else "─"), style=shades[max(0, 4 - d)])
+        return t
+
+    def _glimmer(self, w: int, shades: list[str]) -> Text:
+        t = Text()
+        for _i in range(w):
+            if random.random() < 0.06:
+                t.append(random.choice("✦✺*"), style=shades[4])
+            else:
+                t.append(" ", style=shades[0])
+        return t
+
+    def _ladder(self, w: int, shades: list[str]) -> Text:
+        n = len(self.BARS)
+        t = Text()
+        for col in range(w):
+            h = (col * 2 + self._t) % (2 * (n - 1))
+            h = h if h < n else 2 * (n - 1) - h
+            t.append(self.BARS[h], style=shades[min(4, (h * 5) // n)])
+        return t
+
+    def _rotor(self, w: int, shades: list[str]) -> Text:
+        t = Text()
+        for col in range(w):
+            v = math.sin((col - self._t) * 0.4) * math.cos(self._t * 0.1)
+            b = (v + 1) / 2
+            t.append(self.BARS[int(b * (len(self.BARS) - 1))], style=shades[min(4, int(b * 5))])
+        return t
+
+    def _parallax(self, w: int, shades: list[str]) -> Text:
+        out, sh = [" "] * w, [0] * w
+        for speed, ch, s in ((3, "·", 1), (2, "•", 2), (1, "✦", 4)):
+            for k in range(0, w, 6):
+                pos = (k + self._t * speed) % w
+                out[pos], sh[pos] = ch, s
+        t = Text()
+        for ch, s in zip(out, sh):
+            t.append(ch, style=shades[s])
+        return t
+
+    def _wavefront(self, w: int, shades: list[str]) -> Text:
+        pos = self._t % (w + 10) - 5
+        n = len(self.BARS)
+        t = Text()
+        for i in range(w):
+            d = abs(i - pos)
+            t.append(self.BARS[n - 1 - d] if d < n else " ", style=shades[max(0, 4 - d)])
+        return t
+
+    def _symbars(self, w: int, shades: list[str]) -> Text:
+        c = w // 2
+        t = Text()
+        for i in range(w):
+            v = (math.sin(abs(i - c) * 0.3 - self._t * 0.2) + 1) / 2
+            t.append(self.BARS[int(v * (len(self.BARS) - 1))], style=shades[min(4, int(v * 5))])
+        return t
+
+    def _confetti(self, w: int, shades: list[str]) -> Text:
+        if len(self._cells) != w or len(self._glyphs) != w:
+            self._cells, self._glyphs = [0.0] * w, [" "] * w
+        for i in range(w):
+            self._cells[i] *= 0.85
+        for _ in range(max(1, w // 20)):
+            j = random.randrange(w)
+            self._cells[j], self._glyphs[j] = 1.0, random.choice("▪▫◆●*✦")
+        t = Text()
+        for i in range(w):
+            v = self._cells[i]
+            t.append(" " if v < 0.15 else self._glyphs[i], style=shades[min(4, int(v * 5))])
+        return t
+
+    def _noise(self, w: int, shades: list[str]) -> Text:
+        t = Text()
+        for _i in range(w):
+            r = random.random()
+            t.append(random.choice(" ░▒▓"), style=shades[min(4, int(r * 5))])
         return t
 
 
