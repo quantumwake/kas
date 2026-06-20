@@ -141,19 +141,25 @@ class FxBar(Static):
         "tools":      ["#2a1640", "#4f2d80", "#7a45c0", "#c792ea", "#e9d4ff"],  # violet
         "offline":    ["#2a0000", "#5a0d0d", "#8a1f1f", "#ff5f5f", "#ffb0b0"],  # red
     }
-    # Extra colour schemes the rotating states cycle through for variety.
+    # Colour schemes the rotating states cycle through. Most are MULTI-HUE mixes
+    # (red/orange/yellow/green/blue/white together) so the bar bursts with colour,
+    # plus a few mono ramps for contrast.
     PALETTE_POOL = [
-        ["#3a2000", "#7a4500", "#b86800", "#ffb000", "#ffd470"],  # amber
-        ["#0a2a4a", "#155a8a", "#2a8ac8", "#4ec3f0", "#a8e8ff"],  # ice
-        ["#06340a", "#0a7a1a", "#1aa82a", "#39e85a", "#9affb0"],  # matrix
-        ["#3a0a2a", "#7a155a", "#c82a9a", "#ff4ec3", "#ffa8e8"],  # magenta
-        ["#3a0a00", "#7a2500", "#c85000", "#ff8c1a", "#ffd470"],  # sunset
-        ["#063b3b", "#0a7474", "#1ab3b3", "#39e8e8", "#9afff0"],  # aqua
-        ["#1a0a3a", "#3d1d7a", "#6a2dc0", "#a05cf0", "#d4b0ff"],  # purple
-        ["#2a0000", "#7a1000", "#c83000", "#ff5f1a", "#ffb070"],  # ember
+        ["#ff3b30", "#ff9500", "#ffcc00", "#34c759", "#0a84ff"],  # rgb (red→orange→yellow→green→blue)
+        ["#e63946", "#f3a712", "#06d6a0", "#118ab2", "#9b5de5"],  # spectrum
+        ["#ff2d95", "#feec00", "#00f5d4", "#00bbf9", "#9b5de5"],  # neon
+        ["#ff3b30", "#ff9500", "#ffffff", "#00c8ff", "#0a84ff"],  # fire→ice (with white)
+        ["#c81d11", "#ff5e00", "#ffae00", "#ffe600", "#ffffff"],  # warm (red→white-hot)
+        ["#0a84ff", "#00b4d8", "#34c759", "#90e0ef", "#ffffff"],  # cool (blue→green→white)
+        ["#ff006e", "#fb5607", "#ffbe0b", "#8338ec", "#3a86ff"],  # synthwave
+        ["#d00000", "#ffba08", "#3f88c5", "#52b788", "#e0aaff"],  # jewel
+        ["#ff5fa8", "#ff9d5f", "#ffe85f", "#5fe8a8", "#5fa8ff"],  # candy
+        ["#ff0040", "#ff8c00", "#ffe600", "#00d26a", "#3a86ff"],  # rainbow
+        ["#39ff14", "#00e5ff", "#fffb00", "#ff124f", "#ffffff"],  # vivid mix
+        ["#3a2000", "#7a4500", "#b86800", "#ffb000", "#ffd470"],  # amber ramp
+        ["#0a2a4a", "#155a8a", "#2a8ac8", "#4ec3f0", "#a8e8ff"],  # ice ramp
+        ["#06340a", "#0a7a1a", "#1aa82a", "#39e85a", "#9affb0"],  # matrix ramp
         ["#222222", "#555555", "#888888", "#bbbbbb", "#ffffff"],  # mono
-        ["#ff5f5f", "#ffb000", "#3fe85a", "#39d3e8", "#c792ea"],  # rainbow (5 hues)
-        ["#ff5fa8", "#ff9d5f", "#ffe85f", "#5fe8a8", "#5fa8ff"],  # candy (5 hues)
     ]
     # Per-state POOL of effects — rotates over time so it never gets boring;
     # rotating states also pick a random palette each switch (see _tick).
