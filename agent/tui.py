@@ -584,7 +584,14 @@ class AgentApp(App):
         self._switch_model(target)
 
     def _switch_model(self, target: str) -> None:
-        self.body_write(Text(f"[switching to {target} — loading…]", style="yellow"))
+        from scripts.select_model import model_info
+
+        info = {m["id"]: m for m in model_info()}
+        cur, tgt = info.get(self.model, {}), info.get(target, {})
+        self.body_write(Text(
+            f"[switching {self.model.split('/')[-1]} ({cur.get('size_h', '?')}) → "
+            f"{target.split('/')[-1]} ({tgt.get('size_h', '?')}) — offloads the current "
+            "model, then loads the new one…]", style="yellow"))
 
         def do_swap() -> None:
             try:
