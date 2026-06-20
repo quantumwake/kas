@@ -141,15 +141,17 @@ class FxBar(Static):
         "tools":      ["#2a1640", "#4f2d80", "#7a45c0", "#c792ea", "#e9d4ff"],  # violet
         "offline":    ["#2a0000", "#5a0d0d", "#8a1f1f", "#ff5f5f", "#ffb0b0"],  # red
     }
-    # (effect, frame-step) per state — bigger step = faster motion. prefill shows
-    # a real progress bar; generating's wave speeds up with live tok/s.
-    MODES = {
-        "idle":       ("twinkle", 1),
-        "prefill":    ("progress", 1),
-        "generating": ("wave", 2),
-        "tools":      ("comet", 2),
-        "offline":    ("flat", 1),
+    # Per-state POOL of effects — the colour signals the state, but the effect
+    # rotates through the pool over time so it never gets boring. prefill is a
+    # real progress bar (informational, not rotated); offline is a flatline.
+    POOLS = {
+        "idle":       ("twinkle", "plasma", "starfield", "fire", "pulse", "braille", "comet", "heartbeat"),
+        "prefill":    ("progress",),
+        "generating": ("wave", "plasma", "scanline", "braille"),
+        "tools":      ("comet", "scanline", "starfield", "plasma"),
+        "offline":    ("flat",),
     }
+    FAST = {"wave", "comet", "scanline", "starfield"}  # advance 2 frames/tick
     # effects a user can pin via `/fx <name>`
     EFFECTS = ("twinkle", "pulse", "wave", "comet", "plasma", "scanline", "fire",
                "starfield", "braille", "progress", "heartbeat", "flat")
@@ -157,7 +159,11 @@ class FxBar(Static):
     def __init__(self) -> None:
         super().__init__("", id="fx")
         self._t = 0
-        self._pin: str | None = None  # forced effect (/fx <name>); None = state-reactive
+        self._frame = 0           # ticks since mount, for rotation timing
+        self._rotate_at = 0       # frame to switch effect on
+        self._mode: str | None = None
+        self._effect = "twinkle"
+        self._pin: str | None = None  # forced effect (/fx <name>); None = rotate
         self._cells: list[float] = []
         self._glyphs: list[str] = []
         self._stars: list[list[float]] = []
@@ -172,17 +178,24 @@ class FxBar(Static):
         w = max(0, self.size.width)
         if w == 0:
             return
+        self._frame += 1
         mode = getattr(self.app, "fx_mode", "idle")
-        if mode not in self.MODES:
+        if mode not in self.POOLS:
             mode = "idle"
         if self._pin:
-            effect, step, shades = self._pin, 2, self.PALETTES[mode]
+            effect = self._pin
         else:
-            effect, step = self.MODES[mode]
-            shades = self.PALETTES[mode]
-        self._t += step
+            pool = self.POOLS[mode]
+            # rotate on a state change or when the dwell timer elapses
+            if mode != self._mode or self._frame >= self._rotate_at:
+                choices = [e for e in pool if e != self._effect] or list(pool)
+                self._effect = random.choice(choices)
+                self._mode = mode
+                self._rotate_at = self._frame + random.randint(100, 180)  # ~10–18s
+            effect = self._effect
+        self._t += 2 if effect in self.FAST else 1
         fn = getattr(self, "_" + effect, self._twinkle)
-        self.update(fn(w, shades))
+        self.update(fn(w, self.PALETTES[mode]))
 
     def _twinkle(self, w: int, shades: list[str]) -> Text:
         if len(self._cells) != w:
