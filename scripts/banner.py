@@ -28,6 +28,11 @@ BLACK_BG = "\033[40m"
 BOLD = "\033[1m"
 RST = "\033[0m"
 
+# Warm vertical gradient down the 6 block-letter rows — a soft CRT glow (bright
+# gold at the top fading to deep orange) instead of one flat colour.
+ART_RAMP = [222, 220, 214, 208, 202, 166]
+ART_RAMP_HEX = ["#ffdf91", "#ffd152", "#ffb000", "#ff9d00", "#ff7a00", "#e05a10"]
+
 _WIDTH = 60
 
 
@@ -60,17 +65,28 @@ def set_title(text: str = "K.A.S · Kasra's Agentic Shell") -> None:
 def print_console(model: str | None = None, extra: str | None = None) -> None:
     """Print the amber/black banner to the terminal (server + console REPL)."""
     set_title()
-    color = {"art": ORANGE + BOLD, "title": AMBER + BOLD, "sub": DIM_AMBER,
-             "info": AMBER, "rule": DIM_AMBER}
+    color = {"title": AMBER + BOLD, "sub": DIM_AMBER, "info": AMBER, "rule": DIM_AMBER}
     out = []
+    art_i = 0
     for text, role in _box_lines(model, extra):
-        out.append(f"{color[role]}{text}{RST}")
+        if role == "art":
+            shade = ART_RAMP[art_i % len(ART_RAMP)]
+            out.append(f"{BOLD}\033[38;5;{shade}m{text}{RST}")
+            art_i += 1
+        else:
+            out.append(f"{color[role]}{text}{RST}")
     print("\n".join(out))
     print()
 
 
 def tui_lines(model: str | None = None, extra: str | None = None):
     """Return [(text, style)] for rendering in the Textual work view."""
-    style = {"art": "bold #ff8c00", "title": "bold #ffb000", "sub": "#cc7000",
-             "info": "#ffb000", "rule": "#aa5d00"}
-    return [(text, style[role]) for text, role in _box_lines(model, extra)]
+    style = {"title": "bold #ffb000", "sub": "#cc7000", "info": "#ffb000", "rule": "#aa5d00"}
+    out, art_i = [], 0
+    for text, role in _box_lines(model, extra):
+        if role == "art":
+            out.append((text, f"bold {ART_RAMP_HEX[art_i % len(ART_RAMP_HEX)]}"))
+            art_i += 1
+        else:
+            out.append((text, style[role]))
+    return out
