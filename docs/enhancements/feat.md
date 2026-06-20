@@ -39,7 +39,7 @@ Deep-dive designs live in the sibling docs (linked). Updated as we go.
 
 ## 🅿️ Parked (vision / platform — deep dives)
 - [ ] Tool dispatcher (A2A-style `dispatch-skill`) — [tools.md](tools.md)
-- [ ] Skills/plugins (executable), self-authoring, `/supercharge` — [skills.md](skills.md)
+- [~] `/supercharge` v0 SHIPPED (propose-only): reviews session history → writes skill proposals to `.agent/skills/PROPOSALS-*.md`. Execution of self-authored skills still pending the dispatcher. Skills/plugins runtime — [skills.md](skills.md)
 - [ ] Frontier model access (pluggable backend) — [models.md](models.md)
 - [ ] Multimodal serve: image-out / embeddings endpoints + adapters — [multimodal.md](multimodal.md)
 

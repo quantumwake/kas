@@ -36,7 +36,8 @@ from scripts.select_model import downloaded_models
 
 PLACEHOLDER = "task or steering · / for commands · exit"
 COMMANDS = ["/yolo", "/rag", "/rag enable", "/rag disable", "/subagents", "/status",
-            "/ctx", "/ctx max", "/ctx auto", "/kv", "/art", "/stats", "/fx", "/compact", "/stop", "/pause", "/model", "exit"]
+            "/ctx", "/ctx max", "/ctx auto", "/kv", "/art", "/stats", "/fx", "/compact", "/supercharge",
+            "/stop", "/pause", "/model", "exit"]
 
 
 class ModelSelect(ModalScreen):
@@ -1208,6 +1209,12 @@ class AgentApp(App):
                     self.body_write(Text("[nothing to compact yet]", style="yellow"))
                 else:
                     self.msg_q.put("\x00compact")
+            elif text == "/supercharge":
+                if self.busy:
+                    self.body_write(Text("[/supercharge: wait until the agent is idle]", style="yellow"))
+                else:
+                    self.msg_q.put("\x00supercharge")
+                return
             elif text == "/yolo":
                 self.runner.yolo = not self.runner.yolo
                 self.body_write(
@@ -1334,6 +1341,10 @@ class AgentApp(App):
                         store=self.store, max_tokens=self.max_tokens,
                         tools=core.TOOLS + [core.SUBAGENT_TOOL] + extra,
                     )
+                    continue
+                if task == "\x00supercharge":
+                    core.supercharge(self.client, self.io, self.model, self.workdir,
+                                     max_tokens=self.max_tokens)
                     continue
                 if task == "\x00continue":
                     # resume a mid-task session: if the model owes a turn, just

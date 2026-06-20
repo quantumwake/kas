@@ -36,6 +36,7 @@ from .core.compaction import compact_messages, should_compact
 from .core.loop import agent_turn, run_subagent
 from .core.prompts import COMPACT_PROMPT, SUBAGENT_HINT, SYSTEM, TRUNCATION_NOTE
 from .core.subagent import SubagentIO
+from .core.supercharge import supercharge
 from .core.toolspec import RAG_TOOLS, SUBAGENT_MAX_ROUNDS, SUBAGENT_TOOL, TOOLS, WEB_TOOLS
 from .core.transcript import jsonable, turn_label
 
@@ -49,6 +50,7 @@ __all__ = [
     "serve_main",
     "agent_turn",
     "run_subagent",
+    "supercharge",
     "compact_messages",
     "should_compact",
     "ToolRunner",
