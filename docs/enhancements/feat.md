@@ -17,10 +17,14 @@ Deep-dive designs live in the sibling docs (linked). Updated as we go.
 - [x] Model picker shows size + partial/full
 - [x] Repo rename `kascli → kascode`
 
-## 🔧 In flight (open PRs / branches)
-- [ ] `/stats` panel — PR #4 (`feat/stats`); awaiting a terminal eyeball → merge
-- [ ] Banner polish — `feat/polish` (this) — warm gradient glow
-- [ ] Async art — `feat/async-art` — fire-and-continue `generate_image` + `image_status`
+## 🔧 In flight — single branch `v2.1` (PR #5 → main)
+- [x] `/stats` panel — model/ctx/gpu/tokens + system gauges
+- [x] `/model` swap shows size + offload note
+- [x] Banner — kascode rebrand (KASCODE wordmark + lowercase text), gradient glow, cascade reveal
+- [x] deps fix (psutil core, mflux optional) + kascode URLs
+- [ ] (visual eyeball on a real terminal, then merge PR #5)
+> All work now lands on `v2.1` — no per-feature branches. The agent's chaos is
+> quarantined on the throwaway `feat/async-art` (main dir); my work is in a worktree.
 
 ## ⬜ Queued (build next, roughly in order)
 - [ ] Async art (finish): background render, return task id + path, `image_status`
