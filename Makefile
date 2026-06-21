@@ -58,8 +58,10 @@ test: ## run parser + protocol + characterization tests (no model needed)
 	@uv run python tests/test_tools.py
 	@uv run python tests/test_compaction.py
 
-download: ## download model weights (MODEL=...)
-	@HF_XET_HIGH_PERFORMANCE=1 uv run hf download $(MODEL)
+download: ## download model weights (MODEL=...; XET=1 for xet backend)
+	@# Xet high-performance mode stalls and hides progress; standard HTTP gives
+	@# reliable per-file tqdm bars. Set XET=1 to opt back into the xet backend.
+	$(if $(XET),HF_XET_HIGH_PERFORMANCE=1,HF_HUB_DISABLE_XET=1) uv run hf download $(MODEL)
 
 install: ## install `kas` as a global CLI (uv tool)
 	@./install.sh
