@@ -28,6 +28,7 @@ from textual.binding import Binding
 from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.suggester import SuggestFromList
+from textual.theme import Theme
 from textual.widgets import Input, OptionList, RichLog, Static
 from textual.widgets.option_list import Option
 
@@ -895,16 +896,32 @@ class TuiIO:
 
 
 class AgentApp(App):
-    # amber-on-black: retro BBS / amber-CRT
+    # Chrome colours come from the active Textual theme (see SCREEN_THEMES /
+    # on_mount), so `/theme` reskins the WHOLE screen, not just the fx bar.
     CSS = """
-    Screen { background: #0a0500; color: #ffb000; }
-    #topstats { dock: top; height: 1; background: #140a00; color: #ffb000; padding: 0 1; display: none; }
-    #body { height: 1fr; padding: 0 1; background: #0a0500; color: #ffb000; }
-    #status { height: 1; background: #1a0e00; color: #ff8c00; padding: 0 1; }
-    #fx { height: 1; background: #0a0500; color: #ffb000; padding: 0 1; }
-    Input { dock: bottom; background: #1a0e00; color: #ffb000; border: none; }
+    Screen { background: $background; color: $foreground; }
+    #topstats { dock: top; height: 1; background: $surface; color: $foreground; padding: 0 1; display: none; }
+    #body { height: 1fr; padding: 0 1; background: $background; color: $foreground; }
+    #status { height: 1; background: $surface; color: $accent; padding: 0 1; }
+    #fx { height: 1; background: $background; color: $foreground; padding: 0 1; }
+    Input { dock: bottom; background: $surface; color: $foreground; border: none; }
     Input:focus { border: none; }
     """
+    # Whole-screen palettes: background / surface (status+input) / foreground
+    # (text) / accent (status line), hand-tuned for contrast. Names match
+    # FxBar.THEMES so `/theme <name>` recolours chrome AND the fx bar together.
+    # "amber" is the default (the original retro amber-CRT look).
+    SCREEN_THEMES = {
+        "amber":     {"bg": "#0a0500", "surface": "#1a0e00", "fg": "#ffb000", "accent": "#ff8c00"},
+        "matrix":    {"bg": "#001400", "surface": "#002a00", "fg": "#39e85a", "accent": "#1aa82a"},
+        "ice":       {"bg": "#04141f", "surface": "#0a2a4a", "fg": "#a8e8ff", "accent": "#4ec3f0"},
+        "fire":      {"bg": "#140600", "surface": "#2a0e00", "fg": "#ffae00", "accent": "#ff5e00"},
+        "neon":      {"bg": "#0a0014", "surface": "#160a28", "fg": "#00f5d4", "accent": "#ff2d95"},
+        "synthwave": {"bg": "#0d0221", "surface": "#1a0a3a", "fg": "#ffbe0b", "accent": "#ff006e"},
+        "rainbow":   {"bg": "#0a0a0f", "surface": "#16161f", "fg": "#f5f5f5", "accent": "#ff8c00"},
+        "purple":    {"bg": "#0d0420", "surface": "#1a0a3a", "fg": "#d4b0ff", "accent": "#a05cf0"},
+        "mono":      {"bg": "#0a0a0a", "surface": "#1c1c1c", "fg": "#e8e8e8", "accent": "#888888"},
+    }
     BINDINGS = [
         # ctrl+c copies the mouse selection when one exists, quits otherwise
         Binding("ctrl+c", "copy_or_quit", "copy/quit", priority=True),
@@ -930,8 +947,10 @@ class AgentApp(App):
         context_limit: int | None = None,
         sandbox: bool = False,
         art: bool = False,
+        theme: str = "amber",
     ):
         super().__init__()
+        self._initial_theme = (theme or "amber").lower()
         self.client = client
         self.model = model
         self.max_tokens = max_tokens
@@ -1092,6 +1111,18 @@ class AgentApp(App):
     def on_mount(self) -> None:
         self.title = "K.A.S"
         self.sub_title = "Kasra's Agentic Shell"
+        for name, c in self.SCREEN_THEMES.items():
+            self.register_theme(Theme(
+                name=name, primary=c["accent"], secondary=c["accent"], accent=c["accent"],
+                foreground=c["fg"], background=c["bg"], surface=c["surface"], panel=c["surface"],
+                dark=True,
+            ))
+        want = self._initial_theme if self._initial_theme in self.SCREEN_THEMES else "amber"
+        self.theme = want
+        # An explicit non-default theme pins the fx bar to match; plain "amber"
+        # keeps the bar's lively colour rotation (the default look).
+        if want != "amber":
+            self.query_one("#fx").set_theme(want)
         self.query_one(Input).focus()
         from scripts.banner import tui_lines
 
@@ -1306,7 +1337,14 @@ class AgentApp(App):
             elif text == "/theme" or text.startswith("/theme "):
                 fx = self.query_one("#fx")
                 fx.display = True
-                self.body_write(Text(fx.set_theme(text[len("/theme"):]), style="yellow"))
+                arg = text[len("/theme"):].strip().lower()
+                # reskin the whole screen too: a named theme repaints chrome; auto
+                # falls back to the default amber chrome (fx then rotates colours).
+                if arg in self.SCREEN_THEMES:
+                    self.theme = arg
+                elif arg in ("auto", "off", "none"):
+                    self.theme = "amber"
+                self.body_write(Text(fx.set_theme(arg), style="yellow"))
                 return
             elif text.startswith("/rag"):
                 arg = text[len("/rag"):].strip().lower()

@@ -108,12 +108,16 @@ Three panels, amber on black:
   (`Esc` closes it). The parent sizes each subagent's round budget by task.
 - **Context window** — `/ctx` shows window / usage / compaction policy;
   `/ctx <n|max|auto>` sets when to compact (`max` rides up to the hard limit).
-- **Ambient fx bar** — reacts to what the agent's doing (idle/prefill/generate/
-  tools); `/fx <effect|auto|on|off|list>` to drive it.
+- **Ambient fx bar** — distinct animation *per state* so "working" is obvious:
+  idle drifts calmly through colourful palettes, generating races, tools march;
+  `/fx <effect|auto|on|off|list>` to drive it.
+- **Themes** — `/theme <amber|matrix|ice|fire|neon|synthwave|rainbow|purple|mono|auto>`
+  recolours the **whole screen** (chrome + fx bar) live; `--theme <name>`
+  (or `KAS_THEME`) sets it at startup.
 - **Slash commands** (tab-complete on `/`): `/yolo` · `/rag enable|disable` ·
-  `/ctx` · `/kv` · `/art` · `/fx` · `/subagents` · `/subagent <n>` ·
+  `/ctx` · `/kv` · `/art` · `/fx` · `/theme` · `/subagents` · `/subagent <n>` ·
   `/model` (arrow-key picker, shows size + partial/full) · `/compact` ·
-  `/stop` (Esc, also cancels a long prefill) · `/pause` · `/status`.
+  `/supercharge` · `/stop` (Esc, also cancels a long prefill) · `/pause` · `/status`.
 
 ## Commands & flags
 

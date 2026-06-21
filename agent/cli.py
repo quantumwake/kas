@@ -143,6 +143,9 @@ def main() -> None:
                     help="jail the file tools to the workdir (reject absolute/.. escapes)")
     ap.add_argument("--art", action="store_true", default=os.environ.get("KAS_ART") == "1",
                     help="enable generate_image (local FLUX via mflux; needs the 'art' extra)")
+    ap.add_argument("--theme", default=os.environ.get("KAS_THEME", "amber"),
+                    help="initial TUI colour theme: amber (default), matrix, ice, fire, neon, "
+                         "synthwave, rainbow, purple, mono (also switchable live with /theme)")
     ap.add_argument("--resume", nargs="?", const="__latest__", metavar="SESSION_ID",
                     help="resume a saved session (latest for this workdir if no id given)")
     ap.add_argument("--sessions", action="store_true", help="list resumable sessions and exit")
@@ -223,6 +226,7 @@ def main() -> None:
             context_limit=context_limit,
             sandbox=args.sandbox,
             art=args.art,
+            theme=args.theme,
         ).run()
         return
 
