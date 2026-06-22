@@ -117,7 +117,7 @@ Three panels, amber on black:
 - **Slash commands** (tab-complete on `/`): `/yolo` · `/rag enable|disable` ·
   `/ctx` · `/kv` · `/art` · `/fx` · `/theme` · `/subagents` · `/subagent <n>` ·
   `/model` (arrow-key picker, shows size + partial/full) · `/compact` ·
-  `/supercharge` · `/stop` (Esc, also cancels a long prefill) · `/pause` · `/status`.
+  `/self-skill` · `/stop` (Esc, also cancels a long prefill) · `/pause` · `/status`.
 
 ## Commands & flags
 

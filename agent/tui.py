@@ -38,7 +38,7 @@ from scripts.select_model import downloaded_models
 PLACEHOLDER = "task or steering · / for commands · exit"
 COMMANDS = ["/yolo", "/rag", "/rag enable", "/rag disable", "/subagents", "/status",
             "/ctx", "/ctx max", "/ctx auto", "/kv", "/art", "/stats", "/fx", "/theme", "/compact",
-            "/supercharge", "/stop", "/pause", "/model", "exit"]
+            "/self-skill", "/stop", "/pause", "/model", "exit"]
 
 
 class ModelSelect(ModalScreen):
@@ -1282,11 +1282,11 @@ class AgentApp(App):
                     self.body_write(Text("[nothing to compact yet]", style="yellow"))
                 else:
                     self.msg_q.put("\x00compact")
-            elif text == "/supercharge":
+            elif text == "/self-skill":
                 if self.busy:
-                    self.body_write(Text("[/supercharge: wait until the agent is idle]", style="yellow"))
+                    self.body_write(Text("[/self-skill: wait until the agent is idle]", style="yellow"))
                 else:
-                    self.msg_q.put("\x00supercharge")
+                    self.msg_q.put("\x00self-skill")
                 return
             elif text == "/yolo":
                 self.runner.yolo = not self.runner.yolo
@@ -1390,7 +1390,7 @@ class AgentApp(App):
                 self.body_write(
                     Text(
                         "commands: /yolo  /rag [enable|disable]  /ctx [<n>|max|auto]  /subagents  "
-                        "/subagent <n>  /status  /compact  /supercharge  /model  /fx  /theme  "
+                        "/subagent <n>  /status  /compact  /self-skill  /model  /fx  /theme  "
                         "/stop (Esc)  /pause (^P) · exit",
                         style="yellow",
                     )
@@ -1428,9 +1428,9 @@ class AgentApp(App):
                         tools=core.TOOLS + [core.SUBAGENT_TOOL] + extra,
                     )
                     continue
-                if task == "\x00supercharge":
-                    core.supercharge(self.client, self.io, self.model, self.workdir,
-                                     max_tokens=self.max_tokens)
+                if task == "\x00self-skill":
+                    core.self_skill(self.client, self.io, self.model, self.workdir,
+                                    max_tokens=self.max_tokens)
                     continue
                 if task == "\x00continue":
                     # resume a mid-task session: if the model owes a turn, just

@@ -270,9 +270,9 @@ def main() -> None:
                 print(f"image generation {'ON (needs mflux: uv add mflux)' if runner.art else 'OFF'}")
             elif user == "/kv" or user.startswith("/kv "):
                 print(runner.kv_status(user[len("/kv"):]))
-            elif user == "/supercharge":
-                from agent.core.supercharge import supercharge
-                supercharge(client, io, config.MODEL, workdir, max_tokens=config.MAX_TOKENS)
+            elif user == "/self-skill":
+                from agent.core.self_skill import self_skill
+                self_skill(client, io, config.MODEL, workdir, max_tokens=config.MAX_TOKENS)
             else:
                 print("commands: /yolo  /ctx [<tokens>|max|auto|valve on|valve off]  /kv  /art  /status  exit")
             continue

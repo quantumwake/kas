@@ -1,4 +1,4 @@
-# Enhancement: skills, plugins, protocols (MCP/A2A/ACP), and /supercharge
+# Enhancement: skills, plugins, protocols (MCP/A2A/ACP), and /self-skill
 
 Status: **parked / vision** — not scheduled. The platform layer that several
 parked ideas converge into. Builds directly on the dispatcher in
@@ -48,7 +48,7 @@ gated:
   before it's allowed in normal turns;
 - versioned + revertible (skills dir is git-trackable).
 
-## /supercharge — periodic meta-learning
+## /self-skill — periodic meta-learning
 
 A batch self-improvement mode, run occasionally (not every turn):
 
@@ -78,4 +78,4 @@ recall) already exists; this adds the meta-loop on top.
 3. MCP client adapter (biggest external-capability payoff for least risk).
 4. A2A / ACP agent adapters.
 5. Guarded self-authoring (sandbox + approval + test-before-trust).
-6. `/supercharge` meta-loop.
+6. `/self-skill` meta-loop.

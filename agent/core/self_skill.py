@@ -1,4 +1,4 @@
-"""/supercharge — meta-learning v0 (see docs/enhancements/skills.md).
+"""/self-skill — self-learned skills v0 (see docs/enhancements/skills.md).
 
 Reviews past sessions for recurring task patterns + capability gaps and asks the
 model to PROPOSE skills that would automate them, writing the proposals to
@@ -6,7 +6,7 @@ model to PROPOSE skills that would automate them, writing the proposals to
 
 This is the propose-only first cut: it surfaces *what to build*. Actually running
 self-authored skills arrives with the tool dispatcher/registry (a later
-milestone) — until then `/supercharge` is the "observe → find gaps" loop and you
+milestone) — until then `/self-skill` is the "observe → find gaps" loop and you
 approve/build the proposals.
 """
 
@@ -16,7 +16,7 @@ import time
 
 from .prompts import SYSTEM
 
-SUPERCHARGE_PROMPT = (
+SELF_SKILL_PROMPT = (
     "You are improving YOURSELF as a local coding agent. Below is a history of "
     "past sessions in this workspace (task titles + handoff summaries). Study it "
     "for: recurring tasks, repeated multi-step tool sequences, and capability "
@@ -56,14 +56,14 @@ def _gather_history(workdir, limit: int = 25, cap: int = 9000) -> str:
     return "\n".join(parts)[:cap]
 
 
-def supercharge(client, io, model: str, workdir, max_tokens: int = 8192) -> pathlib.Path | None:
+def self_skill(client, io, model: str, workdir, max_tokens: int = 8192) -> pathlib.Path | None:
     """Run the meta-analysis and write a proposals file. Returns its path (or None)."""
     history = _gather_history(workdir)
     if not history.strip():
-        io.notice("[supercharge: no session history yet — nothing to learn from]")
+        io.notice("[self-skill: no session history yet — nothing to learn from]")
         return None
-    io.notice("[supercharge: reviewing past sessions for recurring patterns + skill gaps…]")
-    req = [{"role": "user", "content": f"{SUPERCHARGE_PROMPT}\n\n=== SESSION HISTORY ===\n{history}"}]
+    io.notice("[self-skill: reviewing past sessions for recurring patterns + skill gaps…]")
+    req = [{"role": "user", "content": f"{SELF_SKILL_PROMPT}\n\n=== SESSION HISTORY ===\n{history}"}]
     io.stream_started()
     response = None
     try:
@@ -83,11 +83,11 @@ def supercharge(client, io, model: str, workdir, max_tokens: int = 8192) -> path
         io.stream_finished(response.usage if response else None)
     proposals = "\n".join(b.text for b in response.content if b.type == "text").strip()
     if not proposals:
-        io.notice("[supercharge: model returned no proposals]")
+        io.notice("[self-skill: model returned no proposals]")
         return None
     d = pathlib.Path(workdir) / ".agent" / "skills"
     d.mkdir(parents=True, exist_ok=True)
     out = d / f"PROPOSALS-{time.strftime('%Y%m%d-%H%M%S')}.md"
-    out.write_text(f"# /supercharge proposals — {time.strftime('%Y-%m-%d %H:%M')}\n\n{proposals}\n")
-    io.notice(f"[supercharge: proposals written → {out} — review, then we build the ones you want]")
+    out.write_text(f"# /self-skill proposals — {time.strftime('%Y-%m-%d %H:%M')}\n\n{proposals}\n")
+    io.notice(f"[self-skill: proposals written → {out} — review, then we build the ones you want]")
     return out
