@@ -81,6 +81,11 @@ kas --yolo "build me an asteroids game in ./game, then run it"
 with `kas serve --status | --stop | --logs`, or run it in the foreground with
 `kas serve --no-daemon` (equivalently, `kas-server`).
 
+If you just run `kas` and no server is up, it offers to start one for you
+(`Start one now? [Y/n]`) — so the two-step above collapses to a single command
+on a local box. It only offers for a local `--base-url`; a remote one is left
+to you.
+
 ## The TUI
 
 Three panels, amber on black:

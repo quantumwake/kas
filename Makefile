@@ -3,7 +3,7 @@ PORT  ?= 8765
 PIDFILE := .server.pid
 LOG     := server.log
 
-.PHONY: help start start-interactive stop restart status logs agent test download lint fmt typecheck cov check
+.PHONY: help start start-interactive stop restart status logs agent test test-gpu download lint fmt typecheck cov check
 
 help: ## show targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-18s %s\n", $$1, $$2}'
@@ -64,6 +64,10 @@ test: ## run parser + protocol + characterization tests (no model needed)
 	@uv run python tests/test_bm25.py
 	@uv run python tests/test_loop.py
 	@uv run python tests/test_commands.py
+	@uv run python tests/test_server_start.py
+
+test-gpu: ## live engine test against a running server (start one first: make start)
+	@uv run python tests/test_engine_live.py
 
 lint: ## ruff lint + format check (the quality gate; see docs/v3/PLAN.md)
 	@uv run --extra dev ruff check .

@@ -9,6 +9,7 @@ task, the TUI, or the plain REPL.
 import argparse
 import os
 import pathlib
+import subprocess
 import sys
 import time
 
@@ -23,10 +24,78 @@ from .config import served_info
 from .core.loop import agent_turn
 
 
+def _server_state() -> tuple[pathlib.Path, pathlib.Path, pathlib.Path]:
+    """The ~/.kas dir plus the server pid/log paths (created on first use)."""
+    state = pathlib.Path.home() / ".kas"
+    state.mkdir(exist_ok=True)
+    return state, state / "server.pid", state / "server.log"
+
+
+def _spawn_server(port: int, model: str | None = None) -> subprocess.Popen:
+    """Spawn the inference server as a detached process and record its pid.
+
+    A distinct `python -m server.cli` process (not a re-entry of kas) avoids the
+    pidfile self-detection footgun.
+    """
+    _, pidf, logf = _server_state()
+    env = {**os.environ}
+    if model:
+        env["KAS_MODEL"] = model
+    log = open(logf, "a")
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "server.cli", "--port", str(port)],
+        stdout=log,
+        stderr=log,
+        start_new_session=True,
+        env=env,
+    )
+    pidf.write_text(str(proc.pid))
+    return proc
+
+
+def _wait_for_server(base: str, proc: subprocess.Popen, attempts: int = 180) -> bool:
+    """Poll base/v1/models until it answers; False if the process dies or times out."""
+    for _ in range(attempts):
+        try:
+            httpx.get(base + "/v1/models", timeout=1)
+            return True
+        except Exception:
+            if proc.poll() is not None:
+                return False
+            time.sleep(2)
+    return False
+
+
+def _is_local_url(url: str) -> bool:
+    return httpx.URL(url).host in ("127.0.0.1", "localhost", "0.0.0.0", "::1")
+
+
+def _offer_to_start_server(base_url: str, model: str | None) -> tuple[str | None, int | None]:
+    """The server is unreachable. If base_url is local and we're on a TTY, offer
+    to start one and wait for it to load. Returns (served_model, context_limit)
+    on success, else (None, None) — the caller then exits with the usual hint.
+    """
+    if not _is_local_url(base_url) or not sys.stdin.isatty():
+        return None, None  # remote server, or non-interactive — not ours to start
+    try:
+        ans = input(f"No kas server running at {base_url}. Start one now? [Y/n] ").strip().lower()
+    except EOFError:
+        return None, None
+    if ans not in ("", "y", "yes"):
+        return None, None
+    port = httpx.URL(base_url).port or 8765
+    print("starting kas server — the first load pulls the model into the GPU and can take a while…")
+    proc = _spawn_server(port, model=model)
+    if _wait_for_server(base_url, proc):
+        print("server ready.")
+        return served_info(base_url)
+    print("server failed to start — check the log with: kas serve --logs")
+    return None, None
+
+
 def serve_main(argv: list[str]) -> None:
     """`kas serve` — run the inference server. Daemonizes by default."""
     import signal
-    import subprocess
 
     ap = argparse.ArgumentParser(prog="kas serve")
     ap.add_argument("--port", type=int, default=int(os.environ.get("KAS_PORT", "8765")))
@@ -42,9 +111,7 @@ def serve_main(argv: list[str]) -> None:
     ap.add_argument("--logs", action="store_true", help="tail the server log")
     a = ap.parse_args(argv)
 
-    state = pathlib.Path.home() / ".kas"
-    state.mkdir(exist_ok=True)
-    pidf, logf = state / "server.pid", state / "server.log"
+    _, pidf, logf = _server_state()
     base = f"http://127.0.0.1:{a.port}"
 
     def pid() -> int | None:
@@ -102,25 +169,13 @@ def serve_main(argv: list[str]) -> None:
         print(f"already running (pid {pid()}) — `kas serve --stop` first")
         return
 
-    # daemonize: spawn the SEPARATE kas-server binary, detached; wait for ready.
-    # (Spawning a distinct process, not re-entering kas, avoids the pidfile
-    # self-detection footgun.)
-    cmd = [sys.executable, "-m", "server.cli", "--port", str(a.port)]
-    log = open(logf, "a")
-    proc = subprocess.Popen(cmd, stdout=log, stderr=log, start_new_session=True, env={**os.environ})
-    pidf.write_text(str(proc.pid))
+    # daemonize: spawn the SEPARATE kas-server process, detached, then wait.
+    proc = _spawn_server(a.port)
     print(f"starting kas server (pid {proc.pid}) on {base} — loading model…")
-    for _ in range(180):
-        try:
-            httpx.get(base + "/v1/models", timeout=1)
-            print(f"ready: {base}  (logs: kas serve --logs · stop: kas serve --stop)")
-            return
-        except Exception:
-            if proc.poll() is not None:
-                print(f"server exited early — see {logf}")
-                return
-            time.sleep(2)
-    print(f"server slow to start — check {logf}")
+    if _wait_for_server(base, proc):
+        print(f"ready: {base}  (logs: kas serve --logs · stop: kas serve --stop)")
+    else:
+        print(f"server exited early or slow to start — see {logf} (kas serve --logs)")
 
 
 def main() -> None:
@@ -198,9 +253,12 @@ def main() -> None:
     config.COMPACT_AT = args.compact_at
     config.BASE_URL = args.base_url
     served, context_limit = served_info(config.BASE_URL)
+    if served is None:
+        # Server down: offer to start a local one (interactive TTY only).
+        served, context_limit = _offer_to_start_server(config.BASE_URL, args.model)
     config.MODEL = args.model or served
     if config.MODEL is None:
-        sys.exit(f"server at {config.BASE_URL} is not reachable — start it with: make start")
+        sys.exit(f"server at {config.BASE_URL} is not reachable — start it with: kas serve")
 
     workdir = pathlib.Path(args.workdir).resolve()
 
