@@ -57,6 +57,7 @@ test: ## run parser + protocol + characterization tests (no model needed)
 	@uv run python tests/test_kvpersist.py
 	@uv run python tests/test_tools.py
 	@uv run python tests/test_compaction.py
+	@uv run python tests/test_schema.py
 
 lint: ## ruff lint + format check (the quality gate; see docs/v3/PLAN.md)
 	@uv run --extra dev ruff check .

@@ -167,9 +167,10 @@ def main() -> None:
     )
     ap.add_argument(
         "--sandbox",
-        action="store_true",
-        default=os.environ.get("KAS_SANDBOX") == "1",
-        help="jail the file tools to the workdir (reject absolute/.. escapes)",
+        action=argparse.BooleanOptionalAction,
+        default=os.environ.get("KAS_SANDBOX", "1") != "0",
+        help="jail the file tools to the workdir, rejecting absolute/.. escapes "
+        "(on by default; --no-sandbox or KAS_SANDBOX=0 to allow access outside)",
     )
     ap.add_argument(
         "--art",

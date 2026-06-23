@@ -14,6 +14,7 @@ Point any official Anthropic SDK at it:
 """
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -60,6 +61,23 @@ def error_response(status: int, err_type: str, message: str) -> JSONResponse:
         status_code=status,
         content={"type": "error", "error": {"type": err_type, "message": message}},
     )
+
+
+# Cap request body size — a localhost guard against a single client exhausting
+# memory with a multi-GB messages array. Checks Content-Length (which the
+# Anthropic SDK always sends); a chunked body with no such header is not bounded
+# here, which is acceptable for a local-only server. Override via env.
+MAX_BODY_BYTES = int(os.environ.get("KAS_MAX_BODY_BYTES", str(64 * 1024 * 1024)))
+
+
+@app.middleware("http")
+async def _limit_body_size(request: Request, call_next):
+    cl = request.headers.get("content-length")
+    if cl is not None and cl.isdigit() and int(cl) > MAX_BODY_BYTES:
+        return error_response(
+            413, "request_too_large", f"request body exceeds {MAX_BODY_BYTES} bytes"
+        )
+    return await call_next(request)
 
 
 @app.exception_handler(RequestValidationError)

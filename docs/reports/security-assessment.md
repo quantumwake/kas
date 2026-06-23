@@ -352,9 +352,9 @@ graph TB
 
 **⚠️ Gaps:**
 
-1. **Sandbox is off by default** — `--sandbox` is opt-in (`KAS_SANDBOX=1`).
-   Without it, the agent can read/write anywhere the user can. This is
-   documented but could be a footgun for naive users.
+1. ~~**Sandbox is off by default**~~ — **Fixed in v3 (Phase 1).** The sandbox is
+   now **on by default**; `--no-sandbox` / `KAS_SANDBOX=0` opts out. The file
+   tools jail to the workdir unless explicitly disabled.
 
 2. **Bash tool not sandboxed** — The `bash` command runs in the workdir but
    can `cd` anywhere. The sandbox only applies to the file tools. This — not
