@@ -70,6 +70,33 @@ def _is_local_url(url: str) -> bool:
     return httpx.URL(url).host in ("127.0.0.1", "localhost", "0.0.0.0", "::1")
 
 
+def _pick_model() -> str | None:
+    """Prompt for which model to load: a number from the locally downloaded list,
+    a typed Hugging Face model id, or empty for the server's default. Returns the
+    chosen id, or None for the default.
+    """
+    from scripts.select_model import model_info
+
+    models = model_info()
+    if models:
+        print("available local models:")
+        for i, m in enumerate(models, 1):
+            tag = m["size_h"] + ("" if m["complete"] else ", partial")
+            print(f"  {i}) {m['id']}  [{tag}]")
+        prompt = "pick a number, or type a HF model id (Enter = server default): "
+    else:
+        prompt = "no local models found — type a HF model id (Enter = server default): "
+    try:
+        raw = input(prompt).strip()
+    except EOFError:
+        return None
+    if not raw:
+        return None  # server default
+    if raw.isdigit() and models and 1 <= int(raw) <= len(models):
+        return models[int(raw) - 1]["id"]
+    return raw  # an HF model id typed verbatim (downloaded on first load if needed)
+
+
 def _offer_to_start_server(base_url: str, model: str | None) -> tuple[str | None, int | None]:
     """The server is unreachable. If base_url is local and we're on a TTY, offer
     to start one and wait for it to load. Returns (served_model, context_limit)
@@ -83,8 +110,13 @@ def _offer_to_start_server(base_url: str, model: str | None) -> tuple[str | None
         return None, None
     if ans not in ("", "y", "yes"):
         return None, None
+    if model is None:  # no --model given: let the user pick or type one
+        model = _pick_model()
     port = httpx.URL(base_url).port or 8765
-    print("starting kas server — the first load pulls the model into the GPU and can take a while…")
+    print(
+        f"starting kas server{f' with {model}' if model else ''} — the first load "
+        "pulls the model into the GPU and can take a while…"
+    )
     proc = _spawn_server(port, model=model)
     if _wait_for_server(base_url, proc):
         print("server ready.")

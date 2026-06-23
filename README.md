@@ -82,9 +82,10 @@ with `kas serve --status | --stop | --logs`, or run it in the foreground with
 `kas serve --no-daemon` (equivalently, `kas-server`).
 
 If you just run `kas` and no server is up, it offers to start one for you
-(`Start one now? [Y/n]`) — so the two-step above collapses to a single command
-on a local box. It only offers for a local `--base-url`; a remote one is left
-to you.
+(`Start one now? [Y/n]`), then lets you pick from your downloaded models (with
+sizes) or type any Hugging Face model id to load — so the two-step above
+collapses to a single command on a local box. It only offers for a local
+`--base-url`; a remote one is left to you.
 
 ## The TUI
 
