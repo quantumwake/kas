@@ -356,18 +356,28 @@ graph TB
    Without it, the agent can read/write anywhere the user can. This is
    documented but could be a footgun for naive users.
 
-2. **Symlink vulnerability** — `pathlib.Path.resolve()` follows symlinks. A
-   symlink inside the workdir pointing outside could bypass the sandbox.
+2. **Bash tool not sandboxed** — The `bash` command runs in the workdir but
+   can `cd` anywhere. The sandbox only applies to the file tools. This — not
+   symlinks — is the real path-escape vector when `--sandbox` is on.
 
-3. **Bash tool not sandboxed** — The `bash` command runs in the workdir but
-   can `cd` anywhere. The sandbox only applies to the file tools.
+> **Correction (verified):** An earlier draft of this report listed a "symlink
+> vulnerability" — the claim that a symlink inside the workdir pointing outside
+> could bypass the sandbox. **This is false.** `PathResolver.resolve()` calls
+> `full.resolve()`, which *canonicalizes* symlinks to their real target, and
+> *then* checks `resolved.is_relative_to(root)`. A symlink whose target lives
+> outside the workdir resolves to that outside path and is correctly rejected.
+> This was confirmed empirically: creating a symlink `workdir/link → /outside`
+> and calling `resolve("link/f.txt")` raises `SandboxViolation`. Following
+> symlinks during resolution makes this code *more* secure, not less, so no
+> "symlink checking" is needed. The finding and its recommendation have been
+> removed.
 
 ### Recommendations
 
-- Consider making `--sandbox` the default (opt-out instead of opt-in).
-- Add symlink checking in `PathResolver.resolve()` (e.g., check for symlinks
-  in the resolved path's components).
-- Document that `--sandbox` does not restrict bash commands.
+- **Make `--sandbox` the default (opt-out instead of opt-in).** This is the
+  single most impactful change in this report — see the v3 remediation plan.
+- Document that `--sandbox` restricts the file tools but **not** bash commands;
+  bash containment is a separate, larger problem (resource limits, denylist).
 
 ---
 

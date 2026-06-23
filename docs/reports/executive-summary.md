@@ -129,7 +129,7 @@ the "why." The README covers requirements, install, features, and internals.
 | 12 | Define `ToolError` exception classes | Functionality | Error handling |
 | 13 | Add `--bench` mode for tok/s tracking | Functionality | Performance regression |
 | 14 | KV cache integrity check on resume | Functionality | Corruption detection |
-| 15 | Symlink checking in `PathResolver` | Security | Sandbox bypass |
+| 15 | Bash resource limits (timeout/ulimit) + denylist | Security | Bash is the real escape vector, not symlinks |
 
 ---
 
