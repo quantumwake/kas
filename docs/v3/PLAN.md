@@ -24,15 +24,19 @@
 
 ## Phase map
 
-| # | Phase | Goal | Risk | Depends on |
-|---|-------|------|------|------------|
-| 0 | Tooling foundation | ruff + mypy + pytest + coverage + CI | Low | — |
-| 1 | Security quick wins | **sandbox default-on**, `max_tokens` cap, body-size limit | Low | 0 |
-| 2 | Test net (pre-refactor) | Characterization tests for the modules about to change | Low | 0 |
-| 3 | Decompose `tui.py` | 1,538L → `agent/tui/` package, no file >400L | Medium | 2 |
-| 4 | Split god-functions | `agent_turn`, `on_input_submitted`, `generate`, `cli.main`, `pipeline.run` | High | 2 |
-| 5 | Ports hygiene | Formal `AgentIO` conformance; ports for `SessionStore`, `Workspace` | Medium | 4 |
-| 6 | Adapter cleanup | Thin `ToolRunner`; decompose `engine.py` | Medium | 5 |
+| # | Phase | Goal | Risk | Depends on | Status |
+|---|-------|------|------|------------|--------|
+| 0 | Tooling foundation | ruff + mypy + pytest + coverage + CI | Low | — | ✅ done |
+| 1 | Security quick wins | **sandbox default-on**, `max_tokens` cap, body-size limit | Low | 0 | ✅ done |
+| 2 | Test net (pre-refactor) | Characterization tests for the modules about to change | Low | 0 | ⬜ next |
+| 3 | Decompose `tui.py` | 1,538L → `agent/tui/` package, no file >400L | Medium | 2 | ⬜ |
+| 4 | Split god-functions | `agent_turn`, `on_input_submitted`, `generate`, `cli.main`, `pipeline.run` | High | 2 | ⬜ |
+| 5 | Ports hygiene | Formal `AgentIO` conformance; ports for `SessionStore`, `Workspace` | Medium | 4 | ⬜ |
+| 6 | Adapter cleanup | Thin `ToolRunner`; decompose `engine.py` | Medium | 5 | ⬜ |
+
+**Progress (v3 branch):** Phase 0 — `14e9bde` (tooling/CI) + `9bb9a38` (strict
+reformat). Phase 1 — `bc90d53` (sandbox default-on, max_tokens cap, body limit).
+Lint clean, 8/8 tests green, **real coverage baseline: 32%**.
 
 Order rationale: tooling → safety net → mechanical splits (tui) → risky logical
 splits (functions) → structural (ports) → deep adapter work. Tests precede every
