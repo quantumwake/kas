@@ -20,6 +20,13 @@ dependencies = [
 web = ["ddgs>=8.0", "trafilatura>=2.0.0"]   # web_search / web_fetch  (--net)
 art = ["mflux>=0.9"]                          # generate_image (FLUX on MLX) (--art)
 all = ["kas[web,art]"]
+# Dev/CI toolchain (linting, types, tests). Pinned so local == CI.
+dev = [
+    "ruff==0.12.1",
+    "mypy==1.16.1",
+    "pytest>=8.2",
+    "pytest-cov>=5.0",
+]
 
 [project.scripts]
 kas = "agent.cli:main"
@@ -31,3 +38,37 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["agent", "server", "scripts"]
+
+# --- Quality gate (see docs/v3/PLAN.md, Phase 0) ---------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# Strict gate: pycodestyle errors/warnings, pyflakes, import-sort, pyupgrade,
+# bugbear. Nothing globally ignored — style is enforced, not suggested.
+select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests run as standalone scripts (`python tests/test_x.py`): a sys.path shim
+# and section-local imports must precede module-level imports, which E402
+# forbids. This is structural to the script-style harness, not a style choice.
+"tests/*" = ["E402"]
+
+[tool.mypy]
+python_version = "3.11"
+# Permissive to start (the tree isn't fully annotated); ratcheted up per phase
+# as modules are decomposed. See docs/v3/PLAN.md.
+ignore_missing_imports = true
+warn_redundant_casts = true
+warn_unused_ignores = false
+exclude = ["tests/", "scripts/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The legacy tests are standalone scripts with bare module-level asserts (still
+# runnable as `python tests/test_x.py`). Collect ONLY the runpy shim so pytest
+# doesn't import each script directly (which would execute it twice); the shim
+# runs each in-process so pytest-cov measures product coverage.
+python_files = ["test_scripts.py"]
+addopts = "-q"

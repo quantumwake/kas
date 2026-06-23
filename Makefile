@@ -3,7 +3,7 @@ PORT  ?= 8765
 PIDFILE := .server.pid
 LOG     := server.log
 
-.PHONY: help start start-interactive stop restart status logs agent test download
+.PHONY: help start start-interactive stop restart status logs agent test download lint fmt typecheck cov check
 
 help: ## show targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-18s %s\n", $$1, $$2}'
@@ -57,6 +57,22 @@ test: ## run parser + protocol + characterization tests (no model needed)
 	@uv run python tests/test_kvpersist.py
 	@uv run python tests/test_tools.py
 	@uv run python tests/test_compaction.py
+
+lint: ## ruff lint + format check (the quality gate; see docs/v3/PLAN.md)
+	@uv run --extra dev ruff check .
+	@uv run --extra dev ruff format --check .
+
+fmt: ## auto-format + apply safe lint fixes
+	@uv run --extra dev ruff check --fix .
+	@uv run --extra dev ruff format .
+
+typecheck: ## mypy (permissive baseline; ratchets to blocking per phase)
+	@uv run --extra dev mypy --config-file pyproject.toml agent/ server/ || true
+
+cov: ## pytest with coverage (product code under agent/ + server/)
+	@uv run --extra dev pytest --cov=agent --cov=server --cov-report=term-missing:skip-covered
+
+check: lint test ## the CI gate locally: lint + the characterization suite
 
 download: ## download model weights (MODEL=...; XET=1 for xet backend)
 	@# Xet high-performance mode stalls and hides progress; standard HTTP gives
