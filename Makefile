@@ -58,6 +58,12 @@ test: ## run parser + protocol + characterization tests (no model needed)
 	@uv run python tests/test_tools.py
 	@uv run python tests/test_compaction.py
 	@uv run python tests/test_schema.py
+	@uv run python tests/test_files_resolver.py
+	@uv run python tests/test_bash.py
+	@uv run python tests/test_git.py
+	@uv run python tests/test_bm25.py
+	@uv run python tests/test_loop.py
+	@uv run python tests/test_commands.py
 
 lint: ## ruff lint + format check (the quality gate; see docs/v3/PLAN.md)
 	@uv run --extra dev ruff check .
