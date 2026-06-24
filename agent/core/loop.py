@@ -99,6 +99,94 @@ def run_subagent(
     return _truncate(final), False
 
 
+def _select_tools(runner, is_subagent: bool) -> list:
+    """Assemble the turn's tool set: base TOOLS, plus the subagent tool (top-level
+    only) and the opt-in rag / web / image sets. Stable per session so the KV
+    cache key holds."""
+    tools = list(TOOLS)
+    if not is_subagent:
+        tools.append(SUBAGENT_TOOL)
+    if runner.rag:
+        tools += RAG_TOOLS
+    if runner.net:
+        tools += WEB_TOOLS
+    if getattr(runner, "art", False):
+        tools += IMAGE_TOOLS
+    return tools
+
+
+def _stream_response(
+    client, messages, tools, headers, model, max_tokens, is_subagent, io, partial: list
+):
+    """Open the streaming request, render thinking/text deltas to `io`, and
+    accumulate them into `partial` (a caller-owned list, so already-shown content
+    survives a mid-stream disconnect). Returns (response, aborted); response is
+    None when the user aborted. Connection errors propagate to the caller's
+    reconnect handler.
+
+    max_retries=0: own the retry in the caller so a dropped connection is surfaced
+    (the SDK's built-in retry is silent).
+    """
+    aborted = False
+    with client.with_options(max_retries=0).messages.stream(
+        model=model,
+        max_tokens=max_tokens,
+        system=SYSTEM if is_subagent else f"{SYSTEM}\n\n{SUBAGENT_HINT}",
+        tools=tools,
+        thinking={"type": "adaptive"},
+        messages=messages,
+        extra_headers=headers,
+    ) as stream:
+        for event in stream:
+            if io.should_abort():
+                aborted = True
+                break  # closing the stream cancels server-side generation
+            if event.type == "content_block_delta":
+                kind = field = None
+                if event.delta.type == "thinking_delta":
+                    kind, field, piece = "thinking", "thinking", event.delta.thinking
+                elif event.delta.type == "text_delta":
+                    kind, field, piece = "text", "text", event.delta.text
+                if kind is not None:
+                    io.delta(kind, piece)
+                    if partial and partial[-1]["type"] == kind:
+                        partial[-1][field] += piece
+                    else:
+                        block = {"type": kind, field: piece}
+                        if kind == "thinking":
+                            block["signature"] = ""
+                        partial.append(block)
+        return (stream.get_final_message() if not aborted else None), aborted
+
+
+def _execute_tool_calls(client, response, runner, io, model, max_tokens, is_subagent) -> list:
+    """Run every completed tool_use block in the response (subagent delegation or
+    runner.run), reporting each call/result to `io`. Returns the tool_result
+    blocks to feed back to the model."""
+    results = []
+    for block in response.content:
+        if block.type != "tool_use":
+            continue
+        io.tool_call(block.name, block.input)
+        if block.name == "subagent":
+            if is_subagent:
+                output, is_error = "subagents cannot spawn subagents", True
+            else:
+                output, is_error = run_subagent(client, runner, io, model, max_tokens, block.input)
+        else:
+            output, is_error = runner.run(block.name, block.input)
+        io.tool_result(output, is_error)
+        results.append(
+            {
+                "type": "tool_result",
+                "tool_use_id": block.id,
+                "content": output,
+                "is_error": is_error,
+            }
+        )
+    return results
+
+
 def agent_turn(
     client: anthropic.Anthropic,
     messages: list,
@@ -125,15 +213,7 @@ def agent_turn(
     compact_at = runner.compact_at if compact_at is None else compact_at
     if model is None:
         raise ValueError("no model resolved — is the server running?")
-    tools = list(TOOLS)
-    if not is_subagent:
-        tools.append(SUBAGENT_TOOL)
-    if runner.rag:
-        tools += RAG_TOOLS  # opt-in; stable per session so the cache key holds
-    if runner.net:
-        tools += WEB_TOOLS
-    if getattr(runner, "art", False):
-        tools += IMAGE_TOOLS
+    tools = _select_tools(runner, is_subagent)
     # Tell the server which session dir to persist/rehydrate this thread's KV
     # cache under (server only acts on it when KV persistence is enabled).
     headers = {"x-agent-thread": thread}
@@ -158,38 +238,9 @@ def agent_turn(
         aborted = False
         partial: list[dict] = []  # accumulated deltas, kept if interrupted
         try:
-            # max_retries=0: own the retry here so a dropped connection is
-            # surfaced (the SDK's built-in retry is silent).
-            with client.with_options(max_retries=0).messages.stream(
-                model=model,
-                max_tokens=max_tokens,
-                system=SYSTEM if is_subagent else f"{SYSTEM}\n\n{SUBAGENT_HINT}",
-                tools=tools,
-                thinking={"type": "adaptive"},
-                messages=messages,
-                extra_headers=headers,
-            ) as stream:
-                for event in stream:
-                    if io.should_abort():
-                        aborted = True
-                        break  # closing the stream cancels server-side generation
-                    if event.type == "content_block_delta":
-                        kind = field = None
-                        if event.delta.type == "thinking_delta":
-                            kind, field, piece = "thinking", "thinking", event.delta.thinking
-                        elif event.delta.type == "text_delta":
-                            kind, field, piece = "text", "text", event.delta.text
-                        if kind is not None:
-                            io.delta(kind, piece)
-                            if partial and partial[-1]["type"] == kind:
-                                partial[-1][field] += piece
-                            else:
-                                block = {"type": kind, field: piece}
-                                if kind == "thinking":
-                                    block["signature"] = ""
-                                partial.append(block)
-                if not aborted:
-                    response = stream.get_final_message()
+            response, aborted = _stream_response(
+                client, messages, tools, headers, model, max_tokens, is_subagent, io, partial
+            )
         except (
             anthropic.APITimeoutError,
             anthropic.APIConnectionError,
@@ -245,29 +296,7 @@ def agent_turn(
 
         # Execute any COMPLETED tool calls (present even when a later call in
         # the same response was truncated).
-        results = []
-        for block in response.content:
-            if block.type != "tool_use":
-                continue
-            io.tool_call(block.name, block.input)
-            if block.name == "subagent":
-                if is_subagent:
-                    output, is_error = "subagents cannot spawn subagents", True
-                else:
-                    output, is_error = run_subagent(
-                        client, runner, io, model, max_tokens, block.input
-                    )
-            else:
-                output, is_error = runner.run(block.name, block.input)
-            io.tool_result(output, is_error)
-            results.append(
-                {
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": output,
-                    "is_error": is_error,
-                }
-            )
+        results = _execute_tool_calls(client, response, runner, io, model, max_tokens, is_subagent)
 
         if results:
             sha = runner.checkpoint(turn_label(messages))
