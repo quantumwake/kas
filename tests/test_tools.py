@@ -65,6 +65,22 @@ with tempfile.TemporaryDirectory() as tmp:
     assert not err and "a.txt" in out and "dup.txt" in out, out
     print("file tools: OK")
 
+    # apply_patch: surgical unified-diff edit (git apply, works outside a repo).
+    r.tool_write_file("p.txt", "alpha\nbeta\ngamma\n")
+    patch = "--- a/p.txt\n+++ b/p.txt\n@@ -1,3 +1,3 @@\n alpha\n-beta\n+BETA\n gamma\n"
+    out, err = r.tool_apply_patch(patch)
+    assert not err and "applied" in out, (out, err)
+    assert r.tool_read_file("p.txt")[0] == "alpha\nBETA\ngamma\n", r.tool_read_file("p.txt")[0]
+
+    # context that doesn't match -> error carrying git's message (so the model can retry)
+    out, err = r.tool_apply_patch("--- a/p.txt\n+++ b/p.txt\n@@ -1 +1 @@\n-nope\n+x\n")
+    assert err and "git apply failed" in out, (out, err)
+
+    # empty patch -> guarded
+    out, err = r.tool_apply_patch("")
+    assert err and "non-empty" in out, (out, err)
+    print("apply_patch: OK")
+
 
 # ---------------------------------------------------------------------------
 # run() dispatch + error surfacing

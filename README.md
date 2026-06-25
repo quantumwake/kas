@@ -142,7 +142,6 @@ kas-server                run the server in the foreground directly
 --rag / --no-rag           local recall tool  (on by default; offline)
 --net                      enable web_search / web_fetch  (off · needs 'web' extra)
 --art                      enable generate_image (FLUX/MLX) (off · needs 'art' extra)
---no-sandbox               allow file tools outside the workdir (sandbox is ON by default)
 --checkpoint               per-turn git commits even in an existing repo
 --resume [ID]              continue a saved session (latest if no id) — warm KV
 --sessions                 list resumable sessions, then exit
@@ -174,9 +173,11 @@ kas-server                run the server in the foreground directly
   immediately, not just between tokens — and frees the worker for a model swap.
 - **checkpoints** (`--checkpoint`) — output dirs become git repos; every turn is
   a commit on a pre-agent baseline (git revert = undo a turn).
-- **sandbox** (on by default; `--no-sandbox` to opt out) — jails the file tools
-  to the workdir, rejecting absolute paths, `../` escapes, and symlinks whose
-  target resolves outside. Does not restrict `bash` (which can still `cd` out).
+- **sandbox** — currently **disabled and gated**. A file-tools-only jail gave a
+  false sense of security (it confined `read/write/edit` but `bash` escaped it),
+  so it was removed; `--sandbox` exits with a notice. Real isolation is a future
+  microVM-isolation extension. For now, tools run with your permissions — review
+  what the agent runs (or run it against a remote/disposable host).
 - **image generation** (`--art`) — `generate_image` renders PNGs with a local
   diffusion model (FLUX via mflux on the Apple GPU); the model writes the file
   and gets back a path (bytes never enter the token stream). Use a fixed `seed`
@@ -210,7 +211,7 @@ Default: `mlx-community/Qwen3.6-27B-4bit`. Switch live with `/model`, or
   KAS_RAG            =0 disables recall      (on by default)
   KAS_NET            =1 enables web tools    (off · kas is offline)
   KAS_ART            =1 enables generate_image (off · needs mflux)
-  KAS_SANDBOX        =0 lets file tools leave the workdir (on by default)
+  KAS_SANDBOX        =1 requests sandbox mode — gated (see --sandbox); off
   KAS_SUBAGENT_ROUNDS  default subagent round budget    (25 · cap 60)
   KAS_ART_MODEL      mflux model for --art  (flux2-klein-4b)
   KAS_ART_STYLE      style preamble prepended to every image prompt

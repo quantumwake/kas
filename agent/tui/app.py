@@ -47,6 +47,7 @@ COMMANDS = [
     "/ctx auto",
     "/kv",
     "/art",
+    "/sandbox",
     "/stats",
     "/fx",
     "/theme",

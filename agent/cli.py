@@ -249,10 +249,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument(
         "--sandbox",
-        action=argparse.BooleanOptionalAction,
-        default=os.environ.get("KAS_SANDBOX", "1") != "0",
-        help="jail the file tools to the workdir, rejecting absolute/.. escapes "
-        "(on by default; --no-sandbox or KAS_SANDBOX=0 to allow access outside)",
+        action="store_true",
+        default=os.environ.get("KAS_SANDBOX") == "1",
+        help="(gated) real sandboxing is a future microVM-isolation extension; the "
+        "old file-tools-only jail was removed because bash escaped it (false security)",
     )
     ap.add_argument(
         "--art",
@@ -345,6 +345,14 @@ def main() -> None:
         del sys.argv[1]  # strip so the agent parser sees the rest
 
     args = _build_parser().parse_args()
+    if args.sandbox:
+        # Honest gate: a file-tools-only jail gave false security (bash escaped
+        # it), so it was removed. True isolation is a future microVM extension.
+        sys.exit(
+            "sandbox mode is gated behind the microVM isolation extension, which isn't "
+            "built yet. kas refuses --sandbox rather than imply a containment it can't "
+            "enforce (bash would still reach the rest of the system). Run without it."
+        )
     config.MAX_TOKENS = args.max_tokens
     config.COMPACT_AT = args.compact_at
     config.BASE_URL = args.base_url

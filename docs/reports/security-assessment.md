@@ -352,9 +352,13 @@ graph TB
 
 **⚠️ Gaps:**
 
-1. ~~**Sandbox is off by default**~~ — **Fixed in v3 (Phase 1).** The sandbox is
-   now **on by default**; `--no-sandbox` / `KAS_SANDBOX=0` opts out. The file
-   tools jail to the workdir unless explicitly disabled.
+1. ~~**Sandbox is off by default**~~ → **Sandbox removed/gated in v3.** Phase 1
+   first made the file-tools jail default-on, but live testing confirmed the
+   deeper problem: it only ever confined the file tools — `bash` escaped it — so a
+   "sandbox mode" badge was actively misleading. The honest fix: the jail is
+   disabled and `--sandbox` exits with a notice that real isolation is a future
+   microVM-isolation extension. No false security; tools run with the user's
+   permissions until true (OS/VM-level) containment exists.
 
 2. **Bash tool not sandboxed** — The `bash` command runs in the workdir but
    can `cd` anywhere. The sandbox only applies to the file tools. This — not

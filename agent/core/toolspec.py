@@ -277,6 +277,27 @@ TOOLS: list[dict] = [
         },
     },
     {
+        "name": "apply_patch",
+        "description": (
+            "Apply a unified diff (git patch) to the workspace. PREFER THIS for "
+            "multi-hunk or larger edits to existing files — it changes only the "
+            "affected lines instead of resending the whole file (cheaper and less "
+            "error-prone than write_file). Give a standard unified diff with @@ hunk "
+            "headers; git-style 'a/path' and 'b/path' headers are fine. Context lines "
+            "must match the current file. Use write_file to create a brand-new file."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patch": {
+                    "type": "string",
+                    "description": "A unified diff to apply (one or more files/hunks)",
+                },
+            },
+            "required": ["patch"],
+        },
+    },
+    {
         "name": "list_dir",
         "description": "List the entries of a directory.",
         "input_schema": {

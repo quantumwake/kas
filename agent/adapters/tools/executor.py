@@ -26,7 +26,14 @@ from .web import web_fetch, web_search
 # across the MRO via getattr(self, "tool_<name>"), so adding a tool group is a
 # new mixin, not a change here.
 class ToolRunner(BashToolsMixin, FileToolsMixin, ImageToolsMixin):
-    MUTATING_TOOLS = ("write_file", "edit_file", "bash", "bash_send_input", "generate_image")
+    MUTATING_TOOLS = (
+        "write_file",
+        "edit_file",
+        "apply_patch",
+        "bash",
+        "bash_send_input",
+        "generate_image",
+    )
 
     def __init__(
         self,
@@ -85,6 +92,17 @@ class ToolRunner(BashToolsMixin, FileToolsMixin, ImageToolsMixin):
         """Commit this turn's changes; returns the short sha or None."""
         mutated, self.mutated = self.mutated, False
         return self.git.checkpoint(mutated, label)
+
+    @property
+    def sandbox(self) -> bool:
+        """Whether the FILE tools are jailed to the workdir. Proxies the
+        PathResolver so /sandbox can toggle it live. NB: this confines the file
+        tools only — bash is NOT sandboxed (see the /sandbox notice)."""
+        return self._paths.sandbox
+
+    @sandbox.setter
+    def sandbox(self, on: bool) -> None:
+        self._paths.sandbox = on
 
     # -- dispatch -------------------------------------------------------------
 

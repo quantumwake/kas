@@ -143,6 +143,8 @@ class CommandHandler:
             self._cmd_kv(text[len("/kv") :])
         elif text == "/art":
             self._cmd_art()
+        elif text == "/sandbox" or text.startswith("/sandbox "):
+            self._cmd_sandbox(text[len("/sandbox") :].strip().lower())
         elif text == "/status":
             self._cmd_status()
         else:
@@ -255,6 +257,19 @@ class CommandHandler:
 
     def _cmd_kv(self, arg: str) -> None:
         self.body_write(Text(self.runner.kv_status(arg), style="yellow"))
+
+    def _cmd_sandbox(self, _arg: str = "") -> None:
+        # Sandboxing is disabled and gated: a file-tools-only jail let bash escape,
+        # so it was removed rather than imply a containment it can't enforce. Real
+        # isolation is a future microVM-isolation extension.
+        self.body_write(
+            Text(
+                "sandbox: OFF (gated). Real isolation is a future microVM extension — "
+                "the old file-tools-only jail was removed because bash escaped it. "
+                "Tools currently run with your full permissions; review what you run.",
+                style="#ff8c00",
+            )
+        )
 
     def _cmd_art(self) -> None:
         self.runner.art = not self.runner.art
