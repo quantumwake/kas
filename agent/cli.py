@@ -210,14 +210,9 @@ def serve_main(argv: list[str]) -> None:
         print(f"server exited early or slow to start — see {logf} (kas serve --logs)")
 
 
-def main() -> None:
-    # subcommands: `kas serve ...` and `kas agent ...` (bare `kas` = agent)
-    if len(sys.argv) > 1 and sys.argv[1] == "serve":
-        serve_main(sys.argv[2:])
-        return
-    if len(sys.argv) > 1 and sys.argv[1] == "agent":
-        del sys.argv[1]  # strip so the agent parser sees the rest
-
+def _build_parser() -> argparse.ArgumentParser:
+    """The `kas` (agent) argument parser. Defaults read from config/env so the
+    KAS_* envvars and the flags compose."""
     ap = argparse.ArgumentParser(prog="kas", description="kas — your local agent")
     ap.add_argument("--yolo", action="store_true", help="run bash commands without confirmation")
     ap.add_argument("--workdir", default=".", help="working directory for tools")
@@ -280,7 +275,76 @@ def main() -> None:
     )
     ap.add_argument("--sessions", action="store_true", help="list resumable sessions and exit")
     ap.add_argument("task", nargs="*", help="optional one-shot task; omit for interactive mode")
-    args = ap.parse_args()
+    return ap
+
+
+def _run_plain_repl(client, io, runner, store, messages: list, workdir, resume_hint) -> None:
+    """The --plain / non-TTY REPL: read lines, handle a small command set, and
+    run a turn per message. resume_hint() prints the resume command on exit."""
+    print("REPL commands: /yolo  /status  exit · at a confirm prompt: y / N / a=always")
+    while True:
+        try:
+            user = input("\nyou> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            resume_hint()
+            return
+        if not user or user in ("exit", "quit"):
+            resume_hint()
+            return
+        if user.startswith("/"):
+            if user == "/yolo":
+                runner.yolo = not runner.yolo
+                state = (
+                    "ON — commands run without confirmation"
+                    if runner.yolo
+                    else "OFF — commands need approval"
+                )
+                print(f"yolo {state}")
+            elif user == "/status":
+                print(
+                    f"model={config.MODEL}  yolo={runner.yolo}  "
+                    f"workdir={runner.workdir}  turns={len(messages)}"
+                )
+            elif user == "/ctx" or user.startswith("/ctx "):
+                from agent.core.compaction import ctx_command
+
+                print(ctx_command(runner, user[len("/ctx") :]))
+            elif user == "/art":
+                runner.art = not runner.art
+                print(
+                    f"image generation {'ON (needs mflux: uv add mflux)' if runner.art else 'OFF'}"
+                )
+            elif user == "/kv" or user.startswith("/kv "):
+                print(runner.kv_status(user[len("/kv") :]))
+            elif user == "/self-skill":
+                from agent.core.self_skill import self_skill
+
+                self_skill(client, io, config.MODEL, workdir, max_tokens=config.MAX_TOKENS)
+            else:
+                print(
+                    "commands: /yolo  /ctx [<tokens>|max|auto|valve on|valve off]  "
+                    "/kv  /art  /status  exit"
+                )
+            continue
+        messages.append({"role": "user", "content": user})
+        try:
+            agent_turn(client, messages, runner, io, store=store)
+        except anthropic.APIError as exc:
+            print(f"\n[api error] {exc}", file=sys.stderr)
+        finally:
+            store.save_transcript(messages, config.MODEL)
+
+
+def main() -> None:
+    # subcommands: `kas serve ...` and `kas agent ...` (bare `kas` = agent)
+    if len(sys.argv) > 1 and sys.argv[1] == "serve":
+        serve_main(sys.argv[2:])
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "agent":
+        del sys.argv[1]  # strip so the agent parser sees the rest
+
+    args = _build_parser().parse_args()
     config.MAX_TOKENS = args.max_tokens
     config.COMPACT_AT = args.compact_at
     config.BASE_URL = args.base_url
@@ -398,56 +462,4 @@ def main() -> None:
         sandbox=args.sandbox,
     )
     print_console(model=config.MODEL, extra=f"workdir {workdir} · yolo {args.yolo}")
-    print("REPL commands: /yolo  /status  exit · at a confirm prompt: y / N / a=always")
-    while True:
-        try:
-            user = input("\nyou> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            print_resume_hint()
-            return
-        if not user or user in ("exit", "quit"):
-            print_resume_hint()
-            return
-        if user.startswith("/"):
-            if user == "/yolo":
-                runner.yolo = not runner.yolo
-                state = (
-                    "ON — commands run without confirmation"
-                    if runner.yolo
-                    else "OFF — commands need approval"
-                )
-                print(f"yolo {state}")
-            elif user == "/status":
-                print(
-                    f"model={config.MODEL}  yolo={runner.yolo}  "
-                    f"workdir={runner.workdir}  turns={len(messages)}"
-                )
-            elif user == "/ctx" or user.startswith("/ctx "):
-                from agent.core.compaction import ctx_command
-
-                print(ctx_command(runner, user[len("/ctx") :]))
-            elif user == "/art":
-                runner.art = not runner.art
-                print(
-                    f"image generation {'ON (needs mflux: uv add mflux)' if runner.art else 'OFF'}"
-                )
-            elif user == "/kv" or user.startswith("/kv "):
-                print(runner.kv_status(user[len("/kv") :]))
-            elif user == "/self-skill":
-                from agent.core.self_skill import self_skill
-
-                self_skill(client, io, config.MODEL, workdir, max_tokens=config.MAX_TOKENS)
-            else:
-                print(
-                    "commands: /yolo  /ctx [<tokens>|max|auto|valve on|valve off]  "
-                    "/kv  /art  /status  exit"
-                )
-            continue
-        messages.append({"role": "user", "content": user})
-        try:
-            agent_turn(client, messages, runner, io, store=store)
-        except anthropic.APIError as exc:
-            print(f"\n[api error] {exc}", file=sys.stderr)
-        finally:
-            store.save_transcript(messages, config.MODEL)
+    _run_plain_repl(client, io, runner, store, messages, workdir, print_resume_hint)
