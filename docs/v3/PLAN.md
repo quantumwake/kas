@@ -31,8 +31,16 @@
 | 2 | Test net (pre-refactor) | Characterization tests for the modules about to change | Low | 0 | ✅ done |
 | 3 | Decompose `tui.py` | 1,538L → `agent/tui/` package, no file >400L | Medium | 2 | ✅ done |
 | 4 | Split god-functions | `agent_turn`, `on_input_submitted`, `generate`, `cli.main`, `pipeline.run` | High | 2 | ✅ done |
-| 5 | Ports hygiene | Formal `AgentIO` conformance; ports for `SessionStore`, `Workspace` | Medium | 4 | ⬜ next |
-| 6 | Adapter cleanup | Thin `ToolRunner`; decompose `engine.py` | Medium | 5 | ⬜ |
+| 5 | Ports hygiene | Formal `AgentIO` conformance; ports for `SessionStore`, `Workspace` | Medium | 4 | ✅ done |
+| 6 | Adapter cleanup | Thin `ToolRunner`; decompose `engine.py` | Medium | 5 | ⬜ next |
+
+**Phase 5** — `ce0d9f8`: `ToolExecutor` made `@runtime_checkable`; added
+`SessionStorePort` + `WorkspacePort`; `test_ports.py` asserts every adapter
+conforms (isinstance) and `test_architecture.py` is an AST guard failing if any
+`*/core/` module imports an adapter. **Coverage infra** — `ab454fa`: pytest now
+runs branch coverage by default, emits Cobertura `coverage.xml` + HTML, enforces
+`--cov-fail-under=45`, and CI posts a coverage table to the PR + job summary.
+19 tests, coverage 47.3%.
 
 **Progress (v3 branch):** Phase 0 — `14e9bde` (tooling/CI) + `9bb9a38` (strict
 reformat). Phase 1 — `bc90d53` (sandbox default-on, max_tokens cap, body limit).
