@@ -9,7 +9,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Input, OptionList, RichLog, Static
+from textual.widgets import Input, OptionList, RichLog, Static, TextArea
 from textual.widgets.option_list import Option
 
 
@@ -128,18 +128,71 @@ class SubagentView(ModalScreen):
         self.dismiss(None)
 
 
+class Composer(ModalScreen):
+    """A full multi-line editor for long / pasted input — VIEW, edit, and send.
+
+    A one-line Input can't show pasted multiline text; this modal does. It opens
+    automatically on a multiline paste (pre-filled with it) and on demand via
+    Ctrl+O. Enter inserts newlines (real multi-line editing); Ctrl+S sends.
+
+    Closing WITHOUT sending never loses work: on_unmount restages the current text
+    as a draft (reopen with Ctrl+O). This matters because the app's priority
+    `escape` binding dismisses modals with no result, so we can't rely on a result
+    value to carry the draft back — we push it to the app ourselves.
+    """
+
+    CSS = """
+    Composer { align: center middle; }
+    #cp-box { width: 90%; height: 80%; background: #1a0e00; border: round #ff9d00; padding: 1 2; }
+    #cp-title { color: #ffb000; text-style: bold; padding-bottom: 1; }
+    Composer TextArea { background: #0a0500; color: #ffb000; height: 1fr; border: none; }
+    """
+    BINDINGS = [Binding("ctrl+s", "send", "send", priority=True)]
+
+    def __init__(self, text: str = "") -> None:
+        super().__init__()
+        self._text = text  # kept in sync with the editor; read by on_unmount
+        self._sent = False
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="cp-box"):
+            yield Static(
+                "composer  ·  Enter = newline  ·  Ctrl+S send  ·  Esc keep as draft",
+                id="cp-title",
+            )
+            yield TextArea(self._text, id="cp-area", soft_wrap=True)
+
+    def on_mount(self) -> None:
+        area = self.query_one(TextArea)
+        area.focus()
+        area.move_cursor(area.document.end)  # land at the end of the pasted text
+
+    def on_text_area_changed(self, event) -> None:
+        self._text = event.text_area.text
+
+    def action_send(self) -> None:
+        self._sent = True
+        self.dismiss(("send", self.query_one(TextArea).text))
+
+    def on_unmount(self) -> None:
+        # Any non-send close (Esc, ctrl+c, etc.) preserves the text as a draft.
+        if not self._sent and self._text.strip():
+            self.app.stage_paste(self._text)
+
+
 class PasteInput(Input):
     """Single-line Input that doesn't shred multiline paste.
 
     Stock Input._on_paste keeps only splitlines()[0]. We intercept a multiline
-    paste and hand the full text to the app to stage (attached to the next
-    message) instead of flattening it into the one-line field.
+    paste and pop the Composer (a real multi-line editor) pre-filled with it, so
+    the full text is visible and editable instead of being flattened into the
+    one-line field.
     """
 
     def _on_paste(self, event) -> None:
         if event.text and "\n" in event.text:
-            self.app.stage_paste(event.text)
             event.stop()
+            self.app.action_compose(event.text)
             return
         super()._on_paste(event)
 

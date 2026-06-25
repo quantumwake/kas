@@ -81,20 +81,25 @@ class CommandHandler:
             blob = "\n\n".join(self._pastes)
             self._pastes = []
             text = f"{text}\n\n{blob}" if text else blob
+        self._submit_message(text)
+
+    def _submit_message(self, text: str) -> None:
+        """Send a finished user message: steer it in if the agent is busy, else
+        start a new turn. Shared by the input router and the Composer."""
         if self.busy:
             self.io.steer_q.put(text)
             self.body_write(
                 Text("[queued steering — applies at the next tool boundary]", style="magenta")
             )
+            return
+        preview = text.splitlines()[0][:80] + (" …" if "\n" in text or len(text) > 80 else "")
+        if getattr(self, "_mdui_rule", False):  # gated; default OFF
+            self.turn_rule("you", "#3fb950")
+            self.body_write(Text(preview))
+            self._agent_header_pending = True
         else:
-            preview = text.splitlines()[0][:80] + (" …" if "\n" in text or len(text) > 80 else "")
-            if getattr(self, "_mdui_rule", False):  # gated; default OFF
-                self.turn_rule("you", "#3fb950")
-                self.body_write(Text(preview))
-                self._agent_header_pending = True
-            else:
-                self.body_write(Text(f"\nyou> {preview}", style="bold"))
-            self.msg_q.put(text)
+            self.body_write(Text(f"\nyou> {preview}", style="bold"))
+        self.msg_q.put(text)
 
     def _dispatch_command(self, text: str) -> None:
         """Route a /slash command to the first registry entry that matches; the

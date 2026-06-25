@@ -34,7 +34,7 @@ from .fx import FxBar
 from .io import TuiIO
 from .loops import WorkerLoops
 from .stats import StatsPanel
-from .widgets import PasteInput, SelectableRichLog
+from .widgets import Composer, PasteInput, SelectableRichLog
 
 PLACEHOLDER = "task or steering · / for commands · exit"
 COMMANDS = [
@@ -110,6 +110,7 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
         Binding("ctrl+q", "quit", "quit", priority=True),
         Binding("escape", "interrupt", "interrupt response", priority=True),
         Binding("ctrl+p", "pause", "pause + save + exit", priority=True),
+        Binding("ctrl+o", "compose", "compose / expand", priority=True),
     ]
 
     def __init__(
@@ -195,16 +196,37 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
         )
 
     def stage_paste(self, text: str) -> None:
-        """Hold a multiline paste; it attaches to the next submitted message."""
+        """Hold multiline text as a draft; it attaches to the next submitted
+        message. Reopen/edit it in the Composer with Ctrl+O."""
         self._pastes.append(text)
         lines, chars = text.count("\n") + 1, len(text)
         self.body_write(
             Text(
-                f"[staged paste · {lines} lines · {chars} chars — type an instruction "
-                "(or just Enter) to send]",
+                f"[staged draft · {lines} lines · {chars} chars — Ctrl+O to edit, "
+                "or type an instruction (or just Enter) to send]",
                 style="magenta",
             )
         )
+
+    def action_compose(self, extra: str = "") -> None:
+        """Open the Composer over the current input + staged draft(s) (+ `extra`),
+        so long / multiline text is fully visible and editable. Bound to Ctrl+O;
+        also called with the pasted text on a multiline paste."""
+        inp = self.query_one(Input)
+        parts = [p for p in (inp.value, *self._pastes, extra) if p]
+        inp.value = ""
+        self._pastes = []
+        self.push_screen(Composer("\n\n".join(parts)), self._composer_result)
+
+    def _composer_result(self, result) -> None:
+        """Composer result. Only 'send' acts here; any other close path already
+        preserved the text as a draft via Composer.on_unmount."""
+        if not result:
+            return
+        action, text = result
+        text = text.strip()
+        if action == "send" and text:
+            self._submit_message(text)
 
     def action_interrupt(self) -> None:
         # Escape is a priority binding, so it fires app-wide — even over a modal,
@@ -294,7 +316,7 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
         self.body_write(
             Text(
                 "type a task; keep typing while it works to steer it · "
-                "y/N/a at confirmations · / for commands",
+                "y/N/a at confirmations · Ctrl+O to compose/paste multiline · / for commands",
                 style="#cc7000",
             )
         )
