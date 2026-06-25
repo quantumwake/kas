@@ -130,6 +130,8 @@ class CommandHandler:
             self._cmd_compact()
         elif text == "/self-skill":
             self._cmd_self_skill()
+        elif text == "/ai-wellbeing":
+            self._cmd_ai_wellbeing()
         elif text == "/yolo":
             self._cmd_yolo()
         elif text.startswith("/subagent"):
@@ -168,6 +170,14 @@ class CommandHandler:
             self.body_write(Text("[/self-skill: wait until the agent is idle]", style="yellow"))
         else:
             self.msg_q.put("\x00self-skill")
+
+    def _cmd_ai_wellbeing(self) -> None:
+        if self.busy:
+            self.body_write(Text("[/ai-wellbeing: wait until the agent is idle]", style="yellow"))
+        elif not self.messages:
+            self.body_write(Text("[ai-wellbeing: no conversation yet to assess]", style="yellow"))
+        else:
+            self.msg_q.put("\x00ai-wellbeing")
 
     def _cmd_yolo(self) -> None:
         self.runner.yolo = not self.runner.yolo
@@ -299,8 +309,8 @@ class CommandHandler:
         self.body_write(
             Text(
                 "commands: /yolo  /rag [enable|disable]  /ctx [<n>|max|auto]  /subagents  "
-                "/subagent <n>  /status  /compact  /self-skill  /model  /fx  /theme  "
-                "/stop (Esc)  /pause (^P) · exit",
+                "/subagent <n>  /status  /compact  /self-skill  /ai-wellbeing  /model  /fx  "
+                "/theme  /sandbox  /stop (Esc)  /pause (^P) · exit",
                 style="yellow",
             )
         )

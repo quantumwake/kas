@@ -342,10 +342,14 @@ def _run_plain_repl(client, io, runner, store, messages: list, workdir, resume_h
                 from agent.core.self_skill import self_skill
 
                 self_skill(client, io, config.MODEL, workdir, max_tokens=config.MAX_TOKENS)
+            elif user == "/ai-wellbeing":
+                from agent.core.ai_wellbeing import assess_wellbeing
+
+                assess_wellbeing(client, io, messages, config.MODEL, workdir)
             else:
                 print(
                     "commands: /yolo  /ctx [<tokens>|max|auto|valve on|valve off]  "
-                    "/kv  /art  /status  exit"
+                    "/kv  /art  /status  /ai-wellbeing  exit"
                 )
             continue
         messages.append({"role": "user", "content": user})

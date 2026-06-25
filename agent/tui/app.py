@@ -55,6 +55,7 @@ COMMANDS = [
     "/theme",
     "/compact",
     "/self-skill",
+    "/ai-wellbeing",
     "/stop",
     "/pause",
     "/model",

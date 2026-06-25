@@ -31,6 +31,7 @@ from .config import (
     served_info,
     served_model,
 )
+from .core.ai_wellbeing import assess_wellbeing
 from .core.compaction import compact_messages, should_compact
 from .core.loop import agent_turn, run_subagent
 from .core.prompts import COMPACT_PROMPT, SUBAGENT_HINT, SYSTEM, TRUNCATION_NOTE
@@ -50,6 +51,7 @@ __all__ = [
     "agent_turn",
     "run_subagent",
     "self_skill",
+    "assess_wellbeing",
     "compact_messages",
     "should_compact",
     "ToolRunner",

@@ -73,6 +73,7 @@ test: ## run parser + protocol + characterization tests (no model needed)
 	@uv run python tests/test_mdui_gate.py
 	@uv run python tests/test_replay.py
 	@uv run python tests/test_confirm.py
+	@uv run python tests/test_ai_wellbeing.py
 
 test-gpu: ## live engine test against a running server (start one first: make start)
 	@uv run python tests/test_engine_live.py

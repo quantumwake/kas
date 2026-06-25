@@ -41,6 +41,16 @@ class WorkerLoops:
                         self.client, self.io, self.model, self.workdir, max_tokens=self.max_tokens
                     )
                     continue
+                if task == "\x00ai-wellbeing":
+                    core.assess_wellbeing(
+                        self.client,
+                        self.io,
+                        messages,
+                        self.model,
+                        self.workdir,
+                        max_tokens=self.max_tokens,
+                    )
+                    continue
                 if task == "\x00continue":
                     # resume a mid-task session: if the model owes a turn, just
                     # run; if the last turn was the agent's, nudge it onward.
