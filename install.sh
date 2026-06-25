@@ -5,7 +5,10 @@
 #   remote:       curl -fsSL https://raw.githubusercontent.com/quantumwake/kascode/main/install.sh | sh
 #
 # uv provides the isolated Python env AND a pinned interpreter, so the install
-# resolves identically everywhere. kas is Apple-Silicon only (MLX).
+# resolves identically everywhere. The agent (kas) is cross-platform; the MLX
+# inference backend (kas-server) is Apple-Silicon only, and mlx-lm carries a
+# platform marker, so installing on other hardware pulls the agent only — no
+# Apple packages — and you point it at a remote server with --base-url.
 set -eu
 
 REPO="git+https://github.com/quantumwake/kascode"   # https: works for public + gh-authed private
@@ -17,8 +20,8 @@ say() { printf '%s\n' "$*"; }
 say "kas installer -- checking requirements..."
 
 case "$(uname -s)/$(uname -m)" in
-    Darwin/arm64) say "  ok: macOS / Apple Silicon" ;;
-    *) say "  warning: kas-server needs macOS on Apple Silicon (MLX). $(uname -s)/$(uname -m) can still run the agent against a remote --base-url." ;;
+    Darwin/arm64) say "  ok: macOS / Apple Silicon — MLX server backend will be installed" ;;
+    *) say "  note: $(uname -s)/$(uname -m) is not Apple Silicon — the MLX backend is skipped (no Apple packages). The agent installs and runs against a remote --base-url." ;;
 esac
 
 if command -v uv >/dev/null 2>&1; then

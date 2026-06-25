@@ -1,10 +1,15 @@
 [project]
 name = "kas"
 version = "0.1.0"
-description = "Anthropic Messages API-compatible server backed by a local MLX model, plus an agentic loop client"
+description = "Anthropic Messages API-compatible server backed by a pluggable local model backend (MLX on Apple Silicon today), plus a cross-platform agentic loop client"
 requires-python = ">=3.11"
+# Cross-platform core: the agent (client) and the server framework run anywhere.
+# The MLX inference backend is Apple-Silicon-only (Metal/Accelerate), so mlx-lm
+# carries a platform marker — `pip/uv install kas` pulls it ONLY on macOS/arm64
+# and skips it on Linux/Windows/x86 (no Apple packages there). Other backends
+# (llama.cpp/CUDA/ROCm) get their own marked deps as they land.
 dependencies = [
-    "mlx-lm>=0.24",
+    "mlx-lm>=0.24; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "fastapi>=0.115",
     "uvicorn>=0.34",
     "anthropic>=0.109",
@@ -18,7 +23,8 @@ dependencies = [
 # install:  uv add ddgs trafilatura   (or)   pip install 'kas[web]'
 [project.optional-dependencies]
 web = ["ddgs>=8.0", "trafilatura>=2.0.0"]   # web_search / web_fetch  (--net)
-art = ["mflux>=0.9"]                          # generate_image (FLUX on MLX) (--art)
+# generate_image (FLUX on MLX) — also Apple-Silicon only, hence the same marker.
+art = ["mflux>=0.9; sys_platform == 'darwin' and platform_machine == 'arm64'"]
 all = ["kas[web,art]"]
 # Dev/CI toolchain (linting, types, tests). Pinned so local == CI.
 dev = [

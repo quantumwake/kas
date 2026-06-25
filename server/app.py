@@ -24,11 +24,12 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from .adapters.http.complete import complete
 from .adapters.http.sse import stream_safe
+from .backends import make_engine
 from .config import KV_PERSIST, MODEL_ID
 from .core import kvpersist
 from .core.continuation import echo_matches, norm_blocks, req_key, try_continuation
 from .core.pipeline import run
-from .engine import Engine
+from .core.ports import EngineLike
 from .schema import MessagesRequest
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
@@ -36,7 +37,8 @@ log = logging.getLogger("kas")
 
 # Shared server state. Each conversation thread (main agent + each subagent)
 # gets its own KV-cache slot (in the engine) and its own continuation memo.
-engine: Engine | None = None
+# `engine` is any EngineLike backend (selected at startup), not a concrete class.
+engine: EngineLike | None = None
 _memos: dict[str, dict[str, Any]] = {}
 
 
@@ -49,7 +51,9 @@ async def lifespan(_: FastAPI):
         print_console(model=MODEL_ID, extra="inference server")
     except Exception:
         pass
-    engine = Engine(MODEL_ID)
+    # Pick the backend (KAS_BACKEND, else auto-detected from the model id) —
+    # MLX today, llama.cpp/CUDA/ROCm later — without the server knowing which.
+    engine = make_engine(MODEL_ID)
     yield
 
 
