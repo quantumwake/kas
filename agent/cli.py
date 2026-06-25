@@ -346,6 +346,25 @@ def _run_plain_repl(client, io, runner, store, messages: list, workdir, resume_h
                 from agent.core.ai_wellbeing import assess_wellbeing
 
                 assess_wellbeing(client, io, messages, config.MODEL, workdir)
+            elif user == "/spec":
+                from agent.core.spec import PROJECT_KINDS, spec_seed
+
+                for i, k in enumerate(PROJECT_KINDS, 1):
+                    print(f"  {i}) {k}")
+                try:
+                    pick = int(input("what are you building? #: ")) - 1
+                    kind = PROJECT_KINDS[pick]
+                except (ValueError, IndexError, EOFError):
+                    print("cancelled")
+                    continue
+                messages.append({"role": "user", "content": spec_seed(kind)})
+                try:
+                    agent_turn(client, messages, runner, io, store=store)
+                except anthropic.APIError as exc:
+                    print(f"\n[api error] {exc}", file=sys.stderr)
+                finally:
+                    store.save_transcript(messages, config.MODEL)
+                continue
             else:
                 print(
                     "commands: /yolo  /ctx [<tokens>|max|auto|valve on|valve off]  "

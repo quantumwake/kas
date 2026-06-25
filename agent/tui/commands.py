@@ -15,7 +15,7 @@ from textual.widgets import Input
 from scripts.select_model import downloaded_models
 
 from .fx import FxBar
-from .widgets import ModelSelect, SubagentView
+from .widgets import ModelSelect, SpecWizard, SubagentView
 
 
 class CommandHandler:
@@ -132,6 +132,8 @@ class CommandHandler:
             self._cmd_self_skill()
         elif text == "/ai-wellbeing":
             self._cmd_ai_wellbeing()
+        elif text == "/spec":
+            self._cmd_spec()
         elif text == "/yolo":
             self._cmd_yolo()
         elif text.startswith("/subagent"):
@@ -178,6 +180,24 @@ class CommandHandler:
             self.body_write(Text("[ai-wellbeing: no conversation yet to assess]", style="yellow"))
         else:
             self.msg_q.put("\x00ai-wellbeing")
+
+    def _cmd_spec(self) -> None:
+        if self.busy:
+            self.body_write(Text("[/spec: wait until the agent is idle]", style="yellow"))
+            return
+        from agent.core.spec import spec_seed
+
+        def chosen(kind: str | None) -> None:
+            # Picked a project kind -> seed a normal turn with SPEC MODE; the agent
+            # asks follow-ups, writes SPEC.md, and (after approval) builds it.
+            if not kind:
+                return
+            self.body_write(
+                Text(f"── spec: {kind} — answer the agent's questions ──", style="green")
+            )
+            self.msg_q.put(spec_seed(kind))
+
+        self.push_screen(SpecWizard(), chosen)
 
     def _cmd_yolo(self) -> None:
         self.runner.yolo = not self.runner.yolo
@@ -308,7 +328,7 @@ class CommandHandler:
     def _cmd_help(self) -> None:
         self.body_write(
             Text(
-                "commands: /yolo  /rag [enable|disable]  /ctx [<n>|max|auto]  /subagents  "
+                "commands: /spec  /yolo  /rag [enable|disable]  /ctx [<n>|max|auto]  /subagents  "
                 "/subagent <n>  /status  /compact  /self-skill  /ai-wellbeing  /model  /fx  "
                 "/theme  /sandbox  /stop (Esc)  /pause (^P) · exit",
                 style="yellow",

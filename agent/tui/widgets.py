@@ -61,6 +61,40 @@ class ModelSelect(ModalScreen):
         self.dismiss(None)
 
 
+class SpecWizard(ModalScreen):
+    """/spec step 1: pick what you're building (↑↓ + Enter, Esc to cancel).
+
+    Returns the chosen project kind via dismiss(); the LLM follow-up questions
+    and the spec itself happen in the normal chat afterward (see core.spec)."""
+
+    CSS = """
+    SpecWizard { align: center middle; }
+    #sw-box { width: 70%; max-width: 70; height: auto; max-height: 80%;
+              background: #1a0e00; border: round #ff9d00; padding: 1 2; }
+    #sw-title { color: #ffb000; text-style: bold; padding-bottom: 1; }
+    SpecWizard OptionList { background: #1a0e00; color: #ffb000; border: none; }
+    SpecWizard OptionList > .option-list--option-highlighted {
+        background: #ff9d00; color: #1a0e00; text-style: bold; }
+    """
+    BINDINGS = [Binding("escape", "cancel", "cancel")]
+
+    def compose(self) -> ComposeResult:
+        from agent.core.spec import PROJECT_KINDS
+
+        with Vertical(id="sw-box"):
+            yield Static("/spec — what are you building?  ·  ↑↓ + Enter  ·  Esc", id="sw-title")
+            yield OptionList(*[Option(k, id=k) for k in PROJECT_KINDS])
+
+    def on_mount(self) -> None:
+        self.query_one(OptionList).focus()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.dismiss(event.option.id)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 class SubagentView(ModalScreen):
     """Scrollable read-only view of one subagent's captured transcript."""
 
