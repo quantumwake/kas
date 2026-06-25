@@ -29,6 +29,40 @@ log = logging.getLogger("kas")
 KEEPALIVE_SECS = 5.0
 
 
+def _prompt_tokens(req: MessagesRequest, key, thread: str, engine: EngineLike, memos) -> list[int]:
+    """Tokens to feed the engine: reuse the raw KV cache via continuation when
+    possible (append-only, no re-render), else tokenize the chat from scratch."""
+    prompt_tokens = try_continuation(req, key, thread, engine, memos)
+    if prompt_tokens is not None:
+        log.info("continuation: appending tool results to raw cache (no re-render)")
+        return prompt_tokens
+    chat = to_chat_messages(req.messages, req.system, req.tool_choice, dialect=engine.dialect)
+    return engine.tokenize(
+        chat, tools=tools_payload(req.tools), enable_thinking=req.thinking_enabled
+    )
+
+
+def _write_memo(memos, thread, key, req, blocks, tool_calls, stop_reason, persist_dir) -> None:
+    """Record this turn's continuation memo (so the next turn can append to the
+    raw cache), and persist it beside the KV deltas for warm resume (best-effort)."""
+    memos[thread] = {
+        "key": key,
+        "messages": [m.model_dump() for m in req.messages],
+        "blocks": blocks,
+        "id2name": {c["id"]: c["name"] for c in tool_calls},
+        "finish": "stop" if stop_reason in ("end_turn", "tool_use") else "other",
+    }
+    if persist_dir:
+        try:
+            from . import kvpersist
+
+            kvpersist.write_json(
+                kvpersist.memo_path(kvpersist.thread_dir(persist_dir, thread)), memos[thread]
+            )
+        except Exception:
+            pass
+
+
 def run(
     req: MessagesRequest,
     engine: EngineLike,
@@ -39,14 +73,7 @@ def run(
     """Generate and yield normalized events (see module docstring)."""
     assert engine is not None
     key = req_key(req)
-    prompt_tokens = try_continuation(req, key, thread, engine, memos)
-    if prompt_tokens is not None:
-        log.info("continuation: appending tool results to raw cache (no re-render)")
-    else:
-        chat = to_chat_messages(req.messages, req.system, req.tool_choice, dialect=engine.dialect)
-        prompt_tokens = engine.tokenize(
-            chat, tools=tools_payload(req.tools), enable_thinking=req.thinking_enabled
-        )
+    prompt_tokens = _prompt_tokens(req, key, thread, engine, memos)
     schemas = {
         t.name: {
             k: v.get("type", "string") for k, v in (t.input_schema.get("properties") or {}).items()
@@ -145,23 +172,5 @@ def run(
     if parser.tool_calls and stop_reason == "end_turn":
         stop_reason = "tool_use"
 
-    memos[thread] = {
-        "key": key,
-        "messages": [m.model_dump() for m in req.messages],
-        "blocks": blocks,
-        "id2name": {c["id"]: c["name"] for c in parser.tool_calls},
-        "finish": "stop" if stop_reason in ("end_turn", "tool_use") else "other",
-    }
-    if persist_dir:
-        # Persist the continuation memo alongside the KV deltas so a resumed
-        # turn can actually hit the restored cache (raw-stream continuation),
-        # not just hold it. Best-effort.
-        try:
-            from . import kvpersist
-
-            kvpersist.write_json(
-                kvpersist.memo_path(kvpersist.thread_dir(persist_dir, thread)), memos[thread]
-            )
-        except Exception:
-            pass
+    _write_memo(memos, thread, key, req, blocks, parser.tool_calls, stop_reason, persist_dir)
     yield {"kind": "done", "stop_reason": stop_reason, **usage}
