@@ -108,7 +108,12 @@ class CommandHandler:
             )
         else:
             preview = text.splitlines()[0][:80] + (" …" if "\n" in text or len(text) > 80 else "")
-            self.body_write(Text(f"\nyou> {preview}", style="bold"))
+            if getattr(self, "_mdui_rule", False):  # gated; default OFF
+                self.turn_rule("you", "#3fb950")
+                self.body_write(Text(preview))
+                self._agent_header_pending = True
+            else:
+                self.body_write(Text(f"\nyou> {preview}", style="bold"))
             self.msg_q.put(text)
 
     def _dispatch_command(self, text: str) -> None:

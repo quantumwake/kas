@@ -8,6 +8,7 @@ Three panels:
                  boundary), answers confirmations (y / N / a=always)
 """
 
+import os
 import queue
 import threading
 
@@ -18,6 +19,7 @@ try:
     import psutil  # optional ('stats' extra): CPU/RAM/disk/net for the /stats panel
 except ImportError:
     psutil = None
+from rich.rule import Rule
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -163,12 +165,26 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
         self._alive = True
         self._pastes: list[str] = []  # staged multiline pastes, sent with next message
         self.subagents: list = []  # SubagentIO registry (this session)
+        # --- markdown UI (MDUI): GATED, default OFF (known-good plain rendering).
+        # An earlier rich-output redesign corrupted the RichLog layout in real
+        # terminals, so it's behind flags to isolate the culprit:
+        #   KAS_MDUI=1        both features
+        #   KAS_MDUI_MD=1     just markdown-rendered answers
+        #   KAS_MDUI_RULES=1  just the you/kas turn separators
+        _mdui = os.environ.get("KAS_MDUI") == "1"
+        self._mdui_md = os.environ.get("KAS_MDUI_MD", "1" if _mdui else "0") == "1"
+        self._mdui_rule = os.environ.get("KAS_MDUI_RULES", "1" if _mdui else "0") == "1"
+        # set on user submit; TuiIO writes the "kas" rule before the first agent
+        # output (only when KAS_MDUI_RULES is on).
+        self._agent_header_pending = False
 
     def compose(self) -> ComposeResult:
         yield Static("", id="topstats")  # /stats panel, docked top (hidden by default)
-        yield SelectableRichLog(
-            id="body", wrap=True, markup=False, highlight=False, auto_scroll=True
-        )
+        # Mouse text-selection is on by default (SelectableRichLog). KAS_TUI_NOSELECT=1
+        # swaps in a plain RichLog to test whether selection is what corrupts the
+        # terminal (a suspect in the rich-output regression).
+        body_cls = RichLog if os.environ.get("KAS_TUI_NOSELECT") == "1" else SelectableRichLog
+        yield body_cls(id="body", wrap=True, markup=False, highlight=False, auto_scroll=True)
         yield Static("", id="status")
         yield FxBar()
         yield PasteInput(
@@ -308,6 +324,11 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
 
     def body_write(self, renderable) -> None:
         self.query_one("#body", RichLog).write(renderable)
+
+    def turn_rule(self, label: str, color: str) -> None:
+        """A left-aligned labeled separator between turns (── label ──────).
+        Only used when KAS_MDUI_RULES is on (gated; see __init__)."""
+        self.body_write(Rule(Text(f" {label} ", style=f"bold {color}"), align="left", style=color))
 
     def register_subagent(self, sub) -> None:
         self.subagents.append(sub)

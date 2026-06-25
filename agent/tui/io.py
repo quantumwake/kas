@@ -12,6 +12,7 @@ import threading
 import time
 from typing import TYPE_CHECKING
 
+from rich.markdown import Markdown
 from rich.text import Text
 
 if TYPE_CHECKING:
@@ -28,8 +29,10 @@ class TuiIO:
         self.abort = threading.Event()
         self.pause = threading.Event()
         self.last_decode_tps: float = 0.0
-        self._line = ""
+        self._line = ""  # plain-mode line buffer (default)
         self._kind = "text"
+        self._think = ""  # MDUI: in-flight thinking line
+        self._answer = ""  # MDUI: accumulated answer text -> Markdown at block end
         self._t0 = 0.0
         self._ttft: float | None = None
 
@@ -42,10 +45,40 @@ class TuiIO:
     def _write(self, text: str, style: str = "") -> None:
         self._ui(self.app.body_write, Text(text, style=style))
 
+    def _md_on(self) -> bool:
+        return getattr(self.app, "_mdui_md", False)  # gated; default OFF
+
     def _flush_line(self) -> None:
         if self._line:
             self._write(self._line, "dim italic" if self._kind == "thinking" else "")
             self._line = ""
+
+    # -- MDUI helpers (only used when _md_on) --
+    def _flush_think(self) -> None:
+        if self._think:
+            self._write(self._think, "dim italic")
+            self._think = ""
+
+    def _render_answer(self) -> None:
+        if self._answer.strip():
+            self._ui(self.app.body_write, Markdown(self._answer))
+        self._answer = ""
+
+    def _agent_header(self) -> None:
+        # "kas" turn rule before the first agent output (only when rules gated on)
+        if getattr(self.app, "_mdui_rule", False) and getattr(
+            self.app, "_agent_header_pending", False
+        ):
+            self._ui(self.app.turn_rule, "kas", "#39d3e8")
+            self.app._agent_header_pending = False
+
+    def _flush(self) -> None:
+        """Flush whichever mode's buffers are live before a non-delta write."""
+        if self._md_on():
+            self._flush_think()
+            self._render_answer()
+        else:
+            self._flush_line()
 
     # ---- interface called by core.agent_turn (agent thread) ----
 
@@ -55,16 +88,30 @@ class TuiIO:
     def delta(self, kind: str, text: str) -> None:
         if self._ttft is None:
             self._ttft = time.time() - self._t0
-        if kind != self._kind:
-            self._flush_line()
-            self._kind = kind
-        self._line += text
-        while "\n" in self._line:
-            line, self._line = self._line.split("\n", 1)
-            self._write(line, "dim italic" if kind == "thinking" else "")
+        if not self._md_on():
+            # default plain mode (known-good): stream line-by-line
+            if kind != self._kind:
+                self._flush_line()
+                self._kind = kind
+            self._line += text
+            while "\n" in self._line:
+                line, self._line = self._line.split("\n", 1)
+                self._write(line, "dim italic" if kind == "thinking" else "")
+            return
+        # MDUI: stream thinking live (dim); buffer answer text for Markdown
+        self._agent_header()
+        if kind == "thinking":
+            self._render_answer()
+            self._think += text
+            while "\n" in self._think:
+                line, self._think = self._think.split("\n", 1)
+                self._write(line, "dim italic")
+        else:
+            self._flush_think()
+            self._answer += text
 
     def stream_finished(self, usage) -> None:
-        self._flush_line()
+        self._flush()
         if usage is not None:
             decode_t = max(0.05, (time.time() - self._t0) - (self._ttft or 0))
             self.last_decode_tps = usage.output_tokens / decode_t
@@ -79,7 +126,8 @@ class TuiIO:
             )
 
     def tool_call(self, name: str, args: dict) -> None:
-        self._flush_line()
+        self._flush()
+        self._agent_header()  # MDUI: a turn may open straight with a tool call
         self._write(f"→ {name}({json.dumps(args, ensure_ascii=False)[:200]})", "bold cyan")
 
     def tool_result(self, output: str, is_error: bool) -> None:
@@ -88,7 +136,7 @@ class TuiIO:
         self._write(f"  {mark} {preview}", style)
 
     def notice(self, text: str) -> None:
-        self._flush_line()
+        self._flush()
         self._write(text, "yellow")
 
     def confirm(self, command: str) -> str:
