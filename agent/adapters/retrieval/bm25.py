@@ -254,6 +254,56 @@ class RagIndex:
             for b, p, ln, s, sc in rows
         ]
 
+    def stats(self) -> dict:
+        """Introspection for /memory: chunk counts per source + total files."""
+        by_source = dict(
+            self.db.execute("SELECT source, COUNT(*) FROM chunks GROUP BY source").fetchall()
+        )
+        files = self.db.execute("SELECT COUNT(*) FROM files").fetchone()[0]
+        return {"by_source": by_source, "files": files}
+
+
+class Bm25Backend:
+    """MemoryBackend over the BM25 (sqlite FTS5) index — the v1 lexical recall.
+
+    Conforms to agent.ports.memory.MemoryBackend: name + refresh / search / stats.
+    The index is built lazily and lives at <workdir>/.agent/rag.db."""
+
+    name = "bm25"
+    label = "BM25 lexical (sqlite FTS5) · code, docs, session memory"
+
+    def __init__(self, workdir: pathlib.Path) -> None:
+        self.workdir = pathlib.Path(workdir)
+        self.db_path = self.workdir / ".agent" / "rag.db"
+        self._index: RagIndex | None = None
+
+    def _idx(self) -> RagIndex:
+        if self._index is None:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            self._index = RagIndex(self.db_path)
+        return self._index
+
+    def refresh(self, root: pathlib.Path) -> int:
+        return self._idx().refresh(pathlib.Path(root))
+
+    def search(self, query: str, k: int = 8) -> list[dict]:
+        hits = self._idx().search(query, k=max(1, min(int(k or 8), 20)))
+        for h in hits:
+            h["backend"] = self.name
+        return hits
+
+    def stats(self) -> dict:
+        st = self._idx().stats()
+        size = self.db_path.stat().st_size if self.db_path.exists() else 0
+        return {
+            "name": self.name,
+            "label": self.label,
+            "by_source": st["by_source"],
+            "files": st["files"],
+            "size_bytes": size,
+            "path": str(self.db_path),
+        }
+
 
 def _gitignored_dirs(root: pathlib.Path) -> set[str]:
     """Simple directory names from .gitignore (bare names / `name/` entries),

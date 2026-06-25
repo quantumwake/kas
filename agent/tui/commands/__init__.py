@@ -17,9 +17,9 @@ from .ctx import CtxCommand
 from .fx import FxCommand
 from .help import HelpCommand
 from .kv import KvCommand
+from .memory import MemoryCommand, RagCommand
 from .model import ModelCommand
 from .pause import PauseCommand
-from .rag import RagCommand
 from .sandbox import SandboxCommand
 from .self_skill import SelfSkillCommand
 from .spec import SpecCommand
@@ -44,7 +44,8 @@ REGISTRY = [
     SubagentCommand(),
     FxCommand(),
     ThemeCommand(),
-    RagCommand(),
+    MemoryCommand(),
+    RagCommand(),  # deprecated alias — keep after /memory so it doesn't shadow it
     StatsCommand(),
     CtxCommand(),
     KvCommand(),

@@ -52,11 +52,11 @@ async def _t() -> None:
         print("shared prefix + subcommand chaining: OK")
 
         # a command that takes args trails a space so you can type the arg
-        assert await tab("/rag") == "/rag ", inp.value
-        # at the branch point (/rag enable | /rag disable) Tab lists, leaves value
+        assert await tab("/memory") == "/memory ", inp.value
+        # at the branch point (/memory search | on | off) Tab lists, leaves value
         before = inp.value
         body_lines_before = len(app.query_one("#body").lines)
-        out = await tab("/rag ")
+        out = await tab("/memory ")
         assert out == before, "listing options must not change the input"
         assert len(app.query_one("#body").lines) > body_lines_before, "options were listed"
         print("branch point lists options: OK")

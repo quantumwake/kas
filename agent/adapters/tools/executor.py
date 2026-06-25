@@ -1,7 +1,7 @@
 """ToolRunner — the ToolExecutor adapter: dispatches a tool call to its handler
 and coordinates per-turn workspace checkpointing.
 
-The collaborators it wires (BashSession, PathResolver, Recaller, web fns,
+The collaborators it wires (BashSession, PathResolver, Memory, web fns,
 GitWorkspace) live in sibling modules, and the tool_* handlers themselves are
 grouped into per-area mixins (_bash_tools / _file_tools / _image_tools). This
 class is the composition point: it owns the shared state in __init__, runs the
@@ -18,7 +18,7 @@ from ._file_tools import FileToolsMixin
 from ._image_tools import ImageToolsMixin
 from .bash import BashSession
 from .files import PathResolver
-from .recall import Recaller
+from .memory import Memory
 from .web import web_fetch, web_search
 
 
@@ -64,7 +64,7 @@ class ToolRunner(BashToolsMixin, FileToolsMixin, ImageToolsMixin):
         self.session: BashSession | None = None
         self.mutated = False  # any tool may have changed files this turn
         self._paths = PathResolver(workdir, sandbox=sandbox)
-        self._recaller = Recaller(workdir)
+        self.memory = Memory(workdir)  # pluggable recall backends (bm25 today)
         self.git = GitWorkspace(workdir, io, force_checkpoint=checkpoint)
         # context size right after the last compaction; auto-compaction
         # triggers on GROWTH beyond this, not on an absolute threshold —
@@ -129,7 +129,7 @@ class ToolRunner(BashToolsMixin, FileToolsMixin, ImageToolsMixin):
     # -- opt-in tools ---------------------------------------------------------
 
     def tool_recall(self, query: str, k: int = 8) -> tuple[str, bool]:
-        return self._recaller.search(query, k)
+        return self.memory.recall(query, k)
 
     def tool_web_search(self, query: str, max_results: int = 5) -> tuple[str, bool]:
         return web_search(query, max_results)
