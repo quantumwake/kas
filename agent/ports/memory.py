@@ -27,3 +27,17 @@ class MemoryBackend(Protocol):
         """Introspection for /memory: at least name, label, by_source (counts),
         and size_bytes. Backends may add their own fields."""
         ...
+
+
+@runtime_checkable
+class Embedder(Protocol):
+    """Turns text into vectors for the sqlite-vec backend. Implementations are
+    platform-tied (MLX = Apple Silicon, GGUF = cross-platform, …); the registry
+    in agent.adapters.embeddings picks a supported+installed one, or None."""
+
+    name: str
+    dim: int  # vector dimensionality (stable for a given embedder/model)
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        """Embed a batch of texts; returns one float vector (length `dim`) each."""
+        ...

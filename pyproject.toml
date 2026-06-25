@@ -25,7 +25,14 @@ dependencies = [
 web = ["ddgs>=8.0", "trafilatura>=2.0.0"]   # web_search / web_fetch  (--net)
 # generate_image (FLUX on MLX) — also Apple-Silicon only, hence the same marker.
 art = ["mflux>=0.9; sys_platform == 'darwin' and platform_machine == 'arm64'"]
-all = ["kas[web,art]"]
+# Semantic recall (/memory): the sqlite-vec vector store + a portable CPU embedder
+# (model2vec — numpy, no torch, all platforms). GPU embedders are separate,
+# platform-gated extras so the wrong runtime is never pulled in; the embedder
+# registry degrades gracefully when none are installed (BM25 + KG still work).
+memory = ["sqlite-vec>=0.1", "model2vec>=0.3"]
+memory-mlx = ["mlx-embeddings>=0.0.1; sys_platform == 'darwin' and platform_machine == 'arm64'"]
+memory-gguf = ["llama-cpp-python>=0.2"]
+all = ["kas[web,art,memory]"]
 # Dev/CI toolchain (linting, types, tests). Pinned so local == CI.
 dev = [
     "ruff==0.12.1",
