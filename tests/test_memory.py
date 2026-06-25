@@ -22,7 +22,6 @@ stores.CONFIG = pathlib.Path(tempfile.mkdtemp()) / "memory.json"  # isolate from
 
 from agent.adapters.retrieval.bm25 import Bm25Backend
 from agent.adapters.retrieval.stores import (
-    INSTALLS,
     enabled_stores,
     install_command,
     set_enabled,
@@ -86,12 +85,13 @@ assert status[0][0] == "memory  ·  recall ENABLED"
 assert "● bm25" in text and any("code" in t and "chunks" in t for t, _ in status)
 assert "⤓ vector — available, not installed" in text  # offers the install
 assert "/memory install vector" in text
-assert "embedders:" in text  # platform-filtered embedder availability
+# the embedder is a chip-dependent SUB-choice of the vector store, not its own store
+assert "embedder format (chip-dependent)" in text
 assert m.status_lines(recall_on=False)[0][0].startswith("memory  ·  recall DISABLED")
-print("status shows stores + install offer + embedders: OK")
+print("status shows stores + install offer + embedder sub-choice: OK")
 
 
-# --- store manager: enable/disable persists; install plans are platform-gated
+# --- store manager: enable/disable persists; installs are store + embedder fmt
 assert enabled_stores() == {"bm25", "vector"}  # defaults (default_on)
 set_enabled("vector", False)
 assert "vector" not in enabled_stores()
@@ -99,15 +99,18 @@ assert stores.CONFIG.exists(), "enabled-set persisted to disk"
 set_enabled("vector", True)
 assert "vector" in enabled_stores()
 
-# install_command: known bundles resolve to a pip argv; mlx is Apple-gated
-assert "vector" in INSTALLS and install_command("vector")[-2:] == ["sqlite-vec", "model2vec"][-2:]
-assert install_command("nope") is None  # unknown bundle
+# install_command(store, embedder): the default embedder is model2vec; mlx/gguf
+# are embedder FORMATS (chip-gated), NOT separate stores
+cmd, err = install_command("vector")
+assert err == "" and cmd[-2:] == ["sqlite-vec", "model2vec"], cmd
+assert install_command("mlx")[0] is None  # 'mlx' is not a store
+assert install_command("vector", "bogusfmt")[0] is None  # unknown embedder format
 import platform as _plat
 
 is_apple = _plat.system() == "Darwin" and _plat.machine() == "arm64"
-assert (install_command("mlx") is not None) == is_apple, "mlx install offered only on Apple Silicon"
-assert install_command("gguf") is not None  # cross-platform
-print("store manager: enable/disable persistence + platform-gated install: OK")
+assert (install_command("vector", "mlx")[0] is not None) == is_apple, "mlx is Apple-gated"
+assert install_command("vector", "gguf")[0] is not None  # cross-platform
+print("store manager: enable/disable persistence + store+embedder install: OK")
 
 
 # --- command routing + /rag alias ------------------------------------------

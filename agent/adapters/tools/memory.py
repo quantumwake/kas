@@ -137,8 +137,7 @@ class Memory:
     def status_lines(self, recall_on: bool) -> list[tuple[str, str]]:
         """(text, style) rows: recall state, every store's platform/install/enabled
         state (with indexed counts when active), and embedder availability."""
-        from ..embeddings import REGISTRY as EMB
-        from ..retrieval.stores import EMBEDDER_BUNDLE, INSTALLS, STORES, enabled_stores
+        from ..retrieval.stores import STORES, enabled_stores
 
         self.refresh()  # active backends only -> counts reflect reality
         en = enabled_stores()
@@ -149,12 +148,11 @@ class Memory:
             if not spec.supported():
                 lines.append((f"  ✗ {name} — not supported on this OS/arch", "dim"))
             elif not spec.installed():
-                note = INSTALLS[name].note if name in INSTALLS else ""
                 lines.append(
                     (f"  ⤓ {name} — available, not installed · /memory install {name}", "yellow")
                 )
-                if note:
-                    lines.append((f"      {note}", "dim"))
+                if name == "vector":  # the vector store's embedder is a sub-choice
+                    lines += self._embedder_lines()
             else:
                 active = name in en
                 mark, hint = ("●", "") if active else ("○", f"  · /memory enable {name}")
@@ -170,20 +168,27 @@ class Memory:
                     lines.append((f"      {size} · {files} files", "dim"))
                     for src, n in sorted((st.get("by_source") or {}).items()):
                         lines.append((f"      {src:<8} {n} chunks", "yellow"))
-
-        # which embedders the vector store could use here (platform-filtered)
-        embs = []
-        for n, spec in sorted(EMB.items(), key=lambda kv: kv[1].priority):
-            if n == "hashing":
-                continue
-            if not spec.supported():
-                continue  # hide runtimes this OS/arch can't run
-            bundle = EMBEDDER_BUNDLE.get(n, n)
-            state = "installed" if spec.installed() else f"install: /memory install {bundle}"
-            embs.append(f"{n} ({state})")
-        if embs:
-            lines.append((f"  embedders:  {'  ·  '.join(embs)}", "dim"))
         return lines
+
+    def _embedder_lines(self) -> list[tuple[str, str]]:
+        """The vector store's embedder FORMATS (chip-dependent loaders — like the
+        inference engine), shown nested under it so it's clear they're a sub-choice
+        of the store, not stores themselves. Platform-filtered."""
+        from ..embeddings import REGISTRY as EMB
+
+        fmts = []
+        for n, spec in sorted(EMB.items(), key=lambda kv: kv[1].priority):
+            if n == "hashing" or not spec.supported():
+                continue  # hide the lexical floor + runtimes this chip can't run
+            fmts.append(f"{n} {'✓' if spec.installed() else '○'}")
+        out = [("      embedder format (chip-dependent): " + "  ".join(fmts), "dim")]
+        out.append(
+            (
+                "      install: /memory install vector [model2vec|mlx|gguf]  (default model2vec)",
+                "dim",
+            )
+        )
+        return out
 
     def search_lines(self, query: str, k: int = 8) -> list[tuple[str, str]]:
         """(text, style) rows for an in-TUI `/memory search <query>`."""

@@ -7,7 +7,8 @@
   /memory clear            drop the indexes, leaving the stores empty
   /memory enable  <store>  turn a store on   (persisted to ~/.kascode/memory.json)
   /memory disable <store>  turn a store off
-  /memory install <name>   install a store / embedder for THIS os/arch (vector|mlx|gguf)
+  /memory install vector [fmt]   install the vector store + an embedder format
+                                 (fmt: model2vec [default] | mlx | gguf, chip-gated)
 
 `/rag` is kept as a (deprecated) alias.
 """
@@ -30,7 +31,7 @@ class MemoryCommand(Command):
         ("clear", "drop the indexes, leaving the stores empty"),
         ("enable", "turn a store on — /memory enable <store>"),
         ("disable", "turn a store off — /memory disable <store>"),
-        ("install", "install a store/embedder for this host — /memory install <vector|mlx|gguf>"),
+        ("install", "install a store + embedder — /memory install vector [model2vec|mlx|gguf]"),
         ("on", "let the agent use the recall tool"),
         ("off", "disable the recall tool"),
     )
@@ -72,7 +73,10 @@ class MemoryCommand(Command):
             self._status(app)
         else:
             app.body_write(
-                Text("usage: /memory [on|off|search|enable|disable|install]", style="yellow")
+                Text(
+                    "usage: /memory [on|off|search|reindex|clear|enable|disable|install]",
+                    style="yellow",
+                )
             )
 
     # -- subcommands ----------------------------------------------------------
@@ -95,25 +99,19 @@ class MemoryCommand(Command):
         MemoryCommand._status(app)
 
     @staticmethod
-    def _install(app, name: str) -> None:
-        from agent.adapters.retrieval.stores import INSTALLS, install_command
+    def _install(app, rest: str) -> None:
+        # /memory install [<store>] [<embedder-format>]   (defaults: vector, model2vec)
+        parts = rest.split()
+        store = parts[0] if parts else "vector"
+        embedder = parts[1] if len(parts) > 1 else None
+        from agent.adapters.retrieval.stores import install_command
 
-        if name not in INSTALLS:
-            app.body_write(
-                Text(f"nothing to install for {name!r} — try: {', '.join(INSTALLS)}", style="red")
-            )
-            return
-        cmd = install_command(name)
+        cmd, err = install_command(store, embedder)
         if cmd is None:
-            app.body_write(
-                Text(
-                    f"'{name}' isn't supported on this OS/arch — pick another "
-                    f"(have: {', '.join(INSTALLS)})",
-                    style="yellow",
-                )
-            )
+            app.body_write(Text(f"can't install: {err}", style="yellow"))
             return
-        app.body_write(Text(f"[installing {name}: {' '.join(cmd)} …]", style="yellow"))
+        label = store + (f" ({embedder})" if embedder else "")
+        app.body_write(Text(f"[installing {label}: {' '.join(cmd)} …]", style="yellow"))
 
         def work() -> None:
             try:
@@ -129,14 +127,15 @@ class MemoryCommand(Command):
                     app.runner.memory._instances.clear()  # re-resolve embedder/availability
                     app.call_from_thread(
                         app.body_write,
-                        Text(f"[{name} installed — /memory to verify]", style="green"),
+                        Text(f"[{label} installed — /memory to verify]", style="green"),
                     )
                     app.call_from_thread(
                         app.body_write, Text("[restart kas if it doesn't light up]", style="dim")
                     )
                 else:
                     app.call_from_thread(
-                        app.body_write, Text(f"[install of {name} failed — see above]", style="red")
+                        app.body_write,
+                        Text(f"[install of {label} failed — see above]", style="red"),
                     )
             except Exception as exc:
                 app.call_from_thread(

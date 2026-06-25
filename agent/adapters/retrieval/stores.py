@@ -73,6 +73,12 @@ STORES: dict[str, StoreSpec] = {
 }
 
 
+# A memory STORE's own packages (no embedder). The vector store needs an embedder
+# too, but the embedder FORMAT is a separate, chip-dependent choice (below) — not
+# a memory store. kg (later) goes here as well.
+STORE_INSTALL: dict[str, list[str]] = {"vector": ["sqlite-vec"]}
+
+
 @dataclass(frozen=True)
 class InstallPlan:
     packages: list[str]
@@ -80,28 +86,16 @@ class InstallPlan:
     note: str
 
 
-# Installable bundles -> concrete pip packages, platform-gated. Each is
-# SELF-SUFFICIENT (includes sqlite-vec) so any one gives a working vector store:
-# `vector` is the portable CPU default; `mlx`/`gguf` swap in a GPU/native embedder.
-INSTALLS: dict[str, InstallPlan] = {
-    "vector": InstallPlan(
-        ["sqlite-vec", "model2vec"], lambda: True, "sqlite-vec + model2vec (portable CPU embedder)"
-    ),
-    "mlx": InstallPlan(
-        ["sqlite-vec", "mlx-embeddings"],
-        _is_apple_silicon,
-        "sqlite-vec + mlx-embeddings (Apple Silicon GPU embedder)",
-    ),
-    "gguf": InstallPlan(
-        ["sqlite-vec", "llama-cpp-python"],
-        lambda: True,
-        "sqlite-vec + llama-cpp-python (cross-platform GGUF embedder)",
-    ),
+# Embedder FORMATS = model loaders for a chip type, exactly like the inference
+# engine backends (mlx for Apple/Metal, gguf for llama.cpp, model2vec static CPU).
+# Picked per host; the default is the portable CPU one. These are NOT memory
+# stores — they're how the vector store turns text into vectors.
+DEFAULT_EMBEDDER = "model2vec"
+EMBEDDER_INSTALL: dict[str, InstallPlan] = {
+    "model2vec": InstallPlan(["model2vec"], lambda: True, "portable CPU static embeddings"),
+    "mlx": InstallPlan(["mlx-embeddings"], _is_apple_silicon, "Apple Silicon GPU (Metal)"),
+    "gguf": InstallPlan(["llama-cpp-python"], lambda: True, "cross-platform GGUF (llama.cpp)"),
 }
-
-# Which install bundle provides each embedder (for the /memory status hints):
-# model2vec ships in the `vector` bundle; mlx/gguf bundles are named for theirs.
-EMBEDDER_BUNDLE = {"model2vec": "vector", "mlx": "mlx", "gguf": "gguf"}
 
 
 def _load_enabled() -> set[str] | None:
@@ -128,13 +122,24 @@ def set_enabled(name: str, on: bool) -> set[str]:
     return en
 
 
-def install_command(name: str) -> list[str] | None:
-    """The platform-correct install argv for an install bundle, or None if the
-    bundle is unknown or unsupported on this host. Prefers `uv pip` (the project's
-    installer), falling back to the running interpreter's pip."""
-    plan = INSTALLS.get(name)
-    if plan is None or not plan.supported():
-        return None
+def install_command(store: str, embedder: str | None = None) -> tuple[list[str] | None, str]:
+    """Build the platform-correct install argv for a memory STORE plus (for the
+    vector store) its EMBEDDER format. Returns (argv, "") on success, or
+    (None, reason) if the store/embedder is unknown or unsupported on this host.
+
+    The embedder format defaults to model2vec (portable CPU); mlx/gguf are the
+    chip-native alternatives, gated by platform. Prefers `uv pip`, else pip."""
+    if store not in STORE_INSTALL:
+        return None, f"unknown store {store!r} (installable: {', '.join(STORE_INSTALL)})"
+    packages = list(STORE_INSTALL[store])
+    if store == "vector":  # the vector store needs an embedder
+        fmt = embedder or DEFAULT_EMBEDDER
+        plan = EMBEDDER_INSTALL.get(fmt)
+        if plan is None:
+            return None, f"unknown embedder format {fmt!r} (have: {', '.join(EMBEDDER_INSTALL)})"
+        if not plan.supported():
+            return None, f"embedder {fmt!r} isn't supported on this OS/arch"
+        packages += plan.packages
     if shutil.which("uv"):
-        return ["uv", "pip", "install", "--python", sys.executable, *plan.packages]
-    return [sys.executable, "-m", "pip", "install", *plan.packages]
+        return ["uv", "pip", "install", "--python", sys.executable, *packages], ""
+    return [sys.executable, "-m", "pip", "install", *packages], ""
