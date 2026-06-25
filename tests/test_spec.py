@@ -11,7 +11,7 @@ import sys
 sys.path.insert(0, ".")
 
 from agent.core.spec import PROJECT_KINDS, spec_seed
-from agent.tui.commands import CommandHandler
+from agent.tui.commands.spec import SpecCommand
 from agent.tui.widgets import SpecWizard
 
 # --- spec_seed -------------------------------------------------------------
@@ -24,8 +24,8 @@ assert "game" in PROJECT_KINDS and "other" in PROJECT_KINDS
 print("spec_seed: OK")
 
 
-# --- /spec command wiring --------------------------------------------------
-class FakeApp(CommandHandler):
+# --- SpecCommand wiring ----------------------------------------------------
+class FakeApp:
     def __init__(self, busy=False) -> None:
         self.busy = busy
         self.msg_q: queue.Queue = queue.Queue()
@@ -39,9 +39,11 @@ class FakeApp(CommandHandler):
         self.pushed = (screen, callback)
 
 
+spec = SpecCommand()
+
 # idle: /spec pushes the SpecWizard modal with a callback
 app = FakeApp()
-app._cmd_spec()
+spec.run(app, "")
 assert app.pushed is not None, "spec did not push a screen"
 screen, cb = app.pushed
 assert isinstance(screen, SpecWizard)
@@ -54,14 +56,14 @@ print("/spec -> modal -> seed turn: OK")
 
 # cancelling the modal queues nothing
 app2 = FakeApp()
-app2._cmd_spec()
+spec.run(app2, "")
 app2.pushed[1](None)
 assert app2.msg_q.empty()
 print("/spec cancel: nothing queued")
 
 # busy: /spec defers and pushes no modal
 busy = FakeApp(busy=True)
-busy._cmd_spec()
+spec.run(busy, "")
 assert busy.pushed is None and any("wait until the agent is idle" in w for w in busy.writes)
 print("/spec while busy: OK")
 
