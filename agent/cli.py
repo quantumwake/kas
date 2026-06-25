@@ -273,6 +273,21 @@ def _build_parser() -> argparse.ArgumentParser:
         "synthwave, rainbow, purple, mono (also switchable live with /theme)",
     )
     ap.add_argument(
+        "--mdui",
+        choices=["off", "md", "rules", "all"],
+        default=os.environ.get("KAS_MDUI", "off"),
+        help="EXPERIMENTAL markdown UI (default off, while the rich rendering is "
+        "stabilised): md=render answers as markdown, rules=you/kas turn separators, "
+        "all=both",
+    )
+    ap.add_argument(
+        "--mouse-select",
+        action=argparse.BooleanOptionalAction,
+        default=os.environ.get("KAS_MOUSE_SELECT", "1") != "0",
+        help="mouse text-selection in the output view (on by default; "
+        "--no-mouse-select if it misbehaves in your terminal)",
+    )
+    ap.add_argument(
         "--resume",
         nargs="?",
         const="__latest__",
@@ -459,6 +474,8 @@ def main() -> None:
             sandbox=args.sandbox,
             art=args.art,
             theme=args.theme,
+            mdui=args.mdui,
+            mouse_select=args.mouse_select,
         ).run()
         print_resume_hint()
         return

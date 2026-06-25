@@ -8,7 +8,6 @@ Three panels:
                  boundary), answers confirmations (y / N / a=always)
 """
 
-import os
 import queue
 import threading
 
@@ -128,6 +127,8 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
         sandbox: bool = False,
         art: bool = False,
         theme: str = "amber",
+        mdui: str = "off",  # off | md | rules | all  (experimental markdown UI)
+        mouse_select: bool = True,
     ):
         super().__init__()
         self._initial_theme = (theme or "amber").lower()
@@ -167,23 +168,20 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
         self.subagents: list = []  # SubagentIO registry (this session)
         # --- markdown UI (MDUI): GATED, default OFF (known-good plain rendering).
         # An earlier rich-output redesign corrupted the RichLog layout in real
-        # terminals, so it's behind flags to isolate the culprit:
-        #   KAS_MDUI=1        both features
-        #   KAS_MDUI_MD=1     just markdown-rendered answers
-        #   KAS_MDUI_RULES=1  just the you/kas turn separators
-        _mdui = os.environ.get("KAS_MDUI") == "1"
-        self._mdui_md = os.environ.get("KAS_MDUI_MD", "1" if _mdui else "0") == "1"
-        self._mdui_rule = os.environ.get("KAS_MDUI_RULES", "1" if _mdui else "0") == "1"
+        # terminals; it's gated (--mdui off|md|rules|all) to isolate the culprit.
+        #   md    -> render answers as Markdown   rules -> you/kas turn separators
+        self._mdui_md = mdui in ("md", "all")
+        self._mdui_rule = mdui in ("rules", "all")
+        self._mouse_select = mouse_select  # --no-mouse-select disables selection
         # set on user submit; TuiIO writes the "kas" rule before the first agent
-        # output (only when KAS_MDUI_RULES is on).
+        # output (only when rules are enabled).
         self._agent_header_pending = False
 
     def compose(self) -> ComposeResult:
         yield Static("", id="topstats")  # /stats panel, docked top (hidden by default)
-        # Mouse text-selection is on by default (SelectableRichLog). KAS_TUI_NOSELECT=1
-        # swaps in a plain RichLog to test whether selection is what corrupts the
-        # terminal (a suspect in the rich-output regression).
-        body_cls = RichLog if os.environ.get("KAS_TUI_NOSELECT") == "1" else SelectableRichLog
+        # Mouse text-selection on by default (SelectableRichLog); --no-mouse-select
+        # swaps in a plain RichLog (a suspect in the rich-output regression).
+        body_cls = SelectableRichLog if self._mouse_select else RichLog
         yield body_cls(id="body", wrap=True, markup=False, highlight=False, auto_scroll=True)
         yield Static("", id="status")
         yield FxBar()
