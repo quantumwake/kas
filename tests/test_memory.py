@@ -64,6 +64,21 @@ assert "1 hit" in sl[0][0] and any("mod.py" in t for t, _ in sl)
 print("Memory recall / search (active backends only): OK")
 
 
+# --- reindex (incremental + full rebuild) and clear ------------------------
+inc = m.reindex_lines(full=False)
+assert "reindex (incremental)" in inc[0][0]
+assert any("bm25:" in t and "0 file" in t for t, _ in inc), "already indexed -> 0 on rescan"
+full = m.reindex_lines(full=True)
+assert "full rebuild" in full[0][0]
+assert any("bm25: 2 file" in t for t, _ in full), "wipe + rebuild re-indexes both files"
+# clear drops the index db; a later search transparently rebuilds it
+cl = m.clear_lines()
+assert any("bm25: index dropped" in t for t, _ in cl)
+assert not m._instance("bm25").db_path.exists(), "clear removed the index db file"
+assert m.search("banana"), "search transparently rebuilds after a clear"
+print("reindex (incremental + full) + clear: OK")
+
+
 # --- status: recall state + per-store platform/install/enabled state -------
 status = m.status_lines(recall_on=True)
 text = "\n".join(t for t, _ in status)

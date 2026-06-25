@@ -3,6 +3,8 @@
   /memory                  status: stores, platform/install/enabled state, embedders
   /memory on | off         toggle whether the agent can call the recall tool
   /memory search <q>       run a recall query and show the hits in the TUI
+  /memory reindex [full]   rescan changed files (full = wipe + rebuild)
+  /memory clear            drop the indexes, leaving the stores empty
   /memory enable  <store>  turn a store on   (persisted to ~/.kascode/memory.json)
   /memory disable <store>  turn a store off
   /memory install <name>   install a store / embedder for THIS os/arch (vector|mlx|gguf)
@@ -21,9 +23,11 @@ from .base import Command
 class MemoryCommand(Command):
     name = "/memory"
     summary = "inspect, search & manage local memory stores"
-    usage = "[on|off|search <q>|enable/disable <s>|install <n>]"
+    usage = "[on|off|search|reindex|clear|enable|disable|install]"
     subcommands = (
         ("search", "run a recall query and show hits — /memory search <q>"),
+        ("reindex", "rescan changed files (or 'reindex full' to rebuild)"),
+        ("clear", "drop the indexes, leaving the stores empty"),
         ("enable", "turn a store on — /memory enable <store>"),
         ("disable", "turn a store off — /memory disable <store>"),
         ("install", "install a store/embedder for this host — /memory install <vector|mlx|gguf>"),
@@ -49,6 +53,15 @@ class MemoryCommand(Command):
             self._toggle(app, rest, on=verb == "enable")
         elif verb == "install":
             self._install(app, rest)
+        elif verb == "reindex":
+            full = rest.lower() in ("full", "rebuild", "all")
+            app.body_write(
+                Text(f"[memory: {'rebuilding' if full else 'reindexing'}…]", style="dim")
+            )
+            self._off_thread(app, lambda: app.runner.memory.reindex_lines(full))
+        elif verb == "clear":
+            app.body_write(Text("[memory: clearing indexes…]", style="dim"))
+            self._off_thread(app, lambda: app.runner.memory.clear_lines())
         elif verb == "search":
             if not rest:
                 app.body_write(Text("usage: /memory search <query>", style="yellow"))

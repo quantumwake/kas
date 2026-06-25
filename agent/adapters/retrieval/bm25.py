@@ -325,6 +325,16 @@ class Bm25Backend:
             "path": str(self.db_path),
         }
 
+    def reset(self) -> None:
+        """Drop the whole index (close + delete the db); rebuilt on next refresh."""
+        if self._index is not None:
+            try:
+                self._index.db.close()
+            except Exception:
+                pass
+            self._index = None
+        self.db_path.unlink(missing_ok=True)
+
 
 def _gitignored_dirs(root: pathlib.Path) -> set[str]:
     """Simple directory names from .gitignore (bare names / `name/` entries),

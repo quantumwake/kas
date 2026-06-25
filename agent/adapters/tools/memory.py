@@ -81,6 +81,41 @@ class Memory:
             out.append(h)
         return out
 
+    def reindex_lines(self, full: bool = False) -> list[tuple[str, str]]:
+        """Reindex the active stores. full=True wipes each first (rebuild from
+        scratch — e.g. after an embedder swap); else it's an incremental rescan."""
+        actives = self.backends
+        if not actives:
+            return [("memory: no active stores to reindex (/memory enable <store>)", "yellow")]
+        verb = "full rebuild" if full else "reindex (incremental)"
+        lines: list[tuple[str, str]] = [(f"memory  ·  {verb}", "bold #ffb000")]
+        for b in actives:
+            try:
+                if full and hasattr(b, "reset"):
+                    b.reset()
+                n = b.refresh(self.workdir)
+                lines.append((f"  {b.name}: {n} file(s) indexed", "yellow"))
+            except Exception as exc:
+                lines.append((f"  {b.name}: failed — {type(exc).__name__}: {exc}", "red"))
+        return lines
+
+    def clear_lines(self) -> list[tuple[str, str]]:
+        """Wipe every active store's index, leaving them empty (rebuild on demand)."""
+        actives = self.backends
+        if not actives:
+            return [("memory: no active stores to clear", "yellow")]
+        lines: list[tuple[str, str]] = [("memory  ·  cleared", "bold #ffb000")]
+        for b in actives:
+            if hasattr(b, "reset"):
+                try:
+                    b.reset()
+                    lines.append((f"  {b.name}: index dropped", "yellow"))
+                except Exception as exc:
+                    lines.append((f"  {b.name}: clear failed — {exc}", "red"))
+            else:
+                lines.append((f"  {b.name}: no index to clear", "dim"))
+        return lines
+
     # -- the recall tool (model-facing; output unchanged from Recaller) -------
 
     def recall(self, query: str, k: int = 8) -> tuple[str, bool]:

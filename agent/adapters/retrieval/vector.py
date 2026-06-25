@@ -134,6 +134,16 @@ class VectorBackend:
             for b, p, ln, s, d in rows
         ]
 
+    def reset(self) -> None:
+        """Drop the vector store (close + delete the db); rebuilt on next refresh."""
+        if self._db is not None:
+            try:
+                self._db.close()
+            except Exception:
+                pass
+            self._db = None
+        self.db_path.unlink(missing_ok=True)
+
     def stats(self) -> dict:
         info: dict = {"name": self.name, "path": str(self.db_path)}
         if not self.available():
