@@ -3,7 +3,7 @@ PORT  ?= 8765
 PIDFILE := .server.pid
 LOG     := server.log
 
-.PHONY: help start start-interactive stop restart status logs agent test test-gpu download lint fmt typecheck cov check
+.PHONY: help start start-interactive stop restart status logs perf agent test test-gpu download lint fmt typecheck cov check install
 
 help: ## show targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-18s %s\n", $$1, $$2}'
