@@ -31,9 +31,12 @@ class Memory:
     def backends(self) -> list:
         if self._backends is None:
             from ..retrieval.bm25 import Bm25Backend
+            from ..retrieval.vector import VectorBackend
 
             (self.workdir / ".agent").mkdir(parents=True, exist_ok=True)
-            self._backends = [Bm25Backend(self.workdir)]
+            # Vector is always present but self-reports unavailability (no
+            # sqlite-vec / no embedder) — so /memory can tell you how to enable it.
+            self._backends = [Bm25Backend(self.workdir), VectorBackend(self.workdir)]
         return self._backends
 
     def refresh(self) -> None:
@@ -44,19 +47,35 @@ class Memory:
                 pass  # a broken backend must not take down recall
 
     def search(self, query: str, k: int = 8) -> list[dict]:
-        """Raw fused hits across every backend (for the /memory search view)."""
+        """Fused hits across every backend via reciprocal-rank fusion.
+
+        Backend scores aren't comparable (FTS5 bm25() is negative-ascending,
+        vector distance is ~0..2), so we fuse by RANK not score: each hit
+        contributes 1/(K+rank) to its (path,lines) slot, summed across backends.
+        Single backend -> RRF is monotonic with rank, so order is unchanged."""
         self.refresh()
-        hits: list[dict] = []
+        K = 60
+        fused: dict = {}
         for b in self.backends:
             try:
-                hits.extend(b.search(query, k))
+                hits = b.search(query, k)
             except Exception:
-                pass
-        # FTS5 bm25() scores are ascending (more negative = better); other
-        # backends may differ, so sort each backend's own order is preserved by
-        # a stable sort on score. Single backend today -> already ranked.
-        hits.sort(key=lambda h: h.get("score", 0.0))
-        return hits[:k]
+                hits = []
+            for rank, h in enumerate(hits):
+                slot = fused.setdefault(
+                    (h.get("path"), h.get("lines")),
+                    {"hit": h, "rrf": 0.0, "backends": set()},
+                )
+                slot["rrf"] += 1.0 / (K + rank + 1)
+                slot["backends"].add(h.get("backend"))
+        ranked = sorted(fused.values(), key=lambda s: s["rrf"], reverse=True)
+        out = []
+        for s in ranked[:k]:
+            h = dict(s["hit"])
+            h["rrf"] = s["rrf"]
+            h["backends"] = sorted(x for x in s["backends"] if x)
+            out.append(h)
+        return out
 
     # -- the recall tool (model-facing; output unchanged from Recaller) -------
 
@@ -86,6 +105,9 @@ class Memory:
                 st = b.stats()
             except Exception as exc:
                 lines.append((f"  {b.name}: stats failed — {exc}", "red"))
+                continue
+            if st.get("unavailable"):  # e.g. vector with no sqlite-vec/embedder
+                lines.append((f"  {st['name']}  —  {st.get('label', '')}", "dim"))
                 continue
             size = _human_bytes(st.get("size_bytes", 0))
             files = st.get("files", 0)

@@ -45,7 +45,7 @@ print("_human_bytes: OK")
 
 # --- Memory aggregator ------------------------------------------------------
 m = Memory(root)
-assert [bk.name for bk in m.backends] == ["bm25"]
+assert [bk.name for bk in m.backends] == ["bm25", "vector"]  # vector self-reports availability
 out, err = m.recall("banana")
 assert not err and "mod.py:1-3" in out and "banana" in out
 assert m.recall("zzzznotfound")[0].startswith("no matches")

@@ -152,6 +152,63 @@ def _match_query(query: str) -> str:
     return " OR ".join(content or tokens)
 
 
+# -- shared chunk iteration (used by both the BM25 and vector backends) --------
+# Each yields (key, source, digest, chunks) for every indexable input. Hash-skip
+# is intentionally NOT done here — each backend tracks its own hashes and decides
+# whether a file changed, so one shared walk feeds independent indexes.
+
+
+def iter_workspace_chunks(root):
+    """Yield (key, source, digest, chunks) for every code/text file under root."""
+    root = pathlib.Path(root)
+    skip = SKIP_DIRS | _gitignored_dirs(root)
+    for path in root.rglob("*"):
+        if not path.is_file() or path.suffix not in (CODE_EXT | TEXT_EXT):
+            continue
+        if any(part in skip for part in path.parts):
+            continue
+        try:
+            if path.stat().st_size > MAX_FILE:
+                continue
+            text = path.read_text(errors="replace")
+        except OSError:
+            continue
+        digest = hashlib.sha1(text.encode("utf-8", "replace")).hexdigest()
+        key = (
+            str(path.relative_to(root))
+            if root in path.parents or path.parent == root
+            else str(path)
+        )
+        is_code = path.suffix in CODE_EXT
+        chunks = _chunk_code(text) if is_code else _chunk_text(text)
+        yield key, ("code" if is_code else "docs"), digest, chunks
+
+
+def iter_memory_chunks(root):
+    """Yield (key, source, digest, chunks) for session transcripts + archives."""
+    root = pathlib.Path(root)
+    sess = root / ".agent" / "sessions"
+    if not sess.exists():
+        return
+    for jf in sess.rglob("*.json"):
+        try:
+            raw = jf.read_text(errors="replace")
+        except OSError:
+            continue
+        digest = hashlib.sha1(raw.encode("utf-8", "replace")).hexdigest()
+        key = f"memory:{jf.relative_to(sess)}"
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        text = data.get("summary") or _flatten_messages(
+            data.get("messages") or data.get("original_messages") or []
+        )
+        if not text.strip():
+            continue
+        yield key, "memory", digest, _chunk_text(text)
+
+
 class RagIndex:
     """sqlite FTS5 BM25 index. Incremental: unchanged files are skipped by hash."""
 
@@ -176,30 +233,12 @@ class RagIndex:
 
     def index_workspace(self, root: pathlib.Path) -> int:
         """Index code+text files under root. Returns number of files (re)indexed."""
-        skip = SKIP_DIRS | _gitignored_dirs(root)
         n = 0
-        for path in root.rglob("*"):
-            if not path.is_file() or path.suffix not in (CODE_EXT | TEXT_EXT):
-                continue
-            if any(part in skip for part in path.parts):
-                continue
-            try:
-                if path.stat().st_size > MAX_FILE:
-                    continue
-                text = path.read_text(errors="replace")
-            except OSError:
-                continue
-            digest = hashlib.sha1(text.encode("utf-8", "replace")).hexdigest()
-            key = (
-                str(path.relative_to(root))
-                if root in path.parents or path.parent == root
-                else str(path)
-            )
+        for key, source, digest, chunks in iter_workspace_chunks(root):
             row = self.db.execute("SELECT hash FROM files WHERE path = ?", (key,)).fetchone()
             if row and row[0] == digest:
-                continue  # unchanged
-            chunks = _chunk_code(text) if path.suffix in CODE_EXT else _chunk_text(text)
-            self._put(key, "code" if path.suffix in CODE_EXT else "docs", chunks, digest)
+                continue  # unchanged -> hash-skip
+            self._put(key, source, chunks, digest)
             n += 1
         self.db.commit()
         return n
@@ -208,29 +247,11 @@ class RagIndex:
         """Index session transcripts + compaction archives so compaction is
         lossless — dropped detail stays recallable."""
         n = 0
-        sess = root / ".agent" / "sessions"
-        if not sess.exists():
-            return 0
-        for jf in sess.rglob("*.json"):
-            try:
-                raw = jf.read_text(errors="replace")
-            except OSError:
-                continue
-            digest = hashlib.sha1(raw.encode("utf-8", "replace")).hexdigest()
-            key = f"memory:{jf.relative_to(sess)}"
+        for key, source, digest, chunks in iter_memory_chunks(root):
             row = self.db.execute("SELECT hash FROM files WHERE path = ?", (key,)).fetchone()
             if row and row[0] == digest:
                 continue
-            try:
-                data = json.loads(raw)
-            except json.JSONDecodeError:
-                continue
-            text = data.get("summary") or _flatten_messages(
-                data.get("messages") or data.get("original_messages") or []
-            )
-            if not text.strip():
-                continue
-            self._put(key, "memory", _chunk_text(text), digest)
+            self._put(key, source, chunks, digest)
             n += 1
         self.db.commit()
         return n
