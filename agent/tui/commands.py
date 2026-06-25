@@ -94,157 +94,7 @@ class CommandHandler:
             self.exit()
             return
         if text.startswith("/") and not self._pastes:
-            if text == "/stop":
-                self.action_interrupt()
-            elif text == "/pause":
-                self.action_pause()
-            elif text.startswith("/model"):
-                self._handle_model_command(text[len("/model") :].strip())
-            elif text == "/compact":
-                if self.busy:
-                    self.body_write(
-                        Text("[/compact: wait until the agent is idle]", style="yellow")
-                    )
-                elif not self.messages:
-                    self.body_write(Text("[nothing to compact yet]", style="yellow"))
-                else:
-                    self.msg_q.put("\x00compact")
-            elif text == "/self-skill":
-                if self.busy:
-                    self.body_write(
-                        Text("[/self-skill: wait until the agent is idle]", style="yellow")
-                    )
-                else:
-                    self.msg_q.put("\x00self-skill")
-                return
-            elif text == "/yolo":
-                self.runner.yolo = not self.runner.yolo
-                state = (
-                    "ON — commands run without confirmation"
-                    if self.runner.yolo
-                    else "OFF — commands need approval"
-                )
-                self.body_write(Text(f"yolo {state}", style="yellow"))
-            elif text.startswith("/subagent"):
-                rest = text[len("/subagent") :].lstrip()
-                # /subagents (list)  ·  /subagent N (drill in)
-                if rest.lstrip("s").strip() == "" and not rest[:1].isdigit():
-                    if not self.subagents:
-                        self.body_write(Text("no subagents spawned this session", style="yellow"))
-                    else:
-                        self.body_write(Text("subagents:", style="yellow"))
-                        for s in self.subagents:
-                            self.body_write(
-                                Text(f"  [{s.n}] {s.status:<7} {s.label}", style="yellow")
-                            )
-                        self.body_write(Text("open one with /subagent <n>", style="yellow"))
-                else:
-                    arg = rest.lstrip("s").strip()
-                    match = next((s for s in self.subagents if str(s.n) == arg), None)
-                    if match:
-                        self.push_screen(SubagentView(match))
-                    else:
-                        self.body_write(
-                            Text(f"no subagent {arg!r} — /subagents to list", style="red")
-                        )
-            elif text == "/fx" or text.startswith("/fx "):
-                arg = text[len("/fx") :].strip().lower()
-                fx = self.query_one("#fx")
-                if arg in ("", "toggle"):
-                    fx.display = not fx.display
-                    msg = f"fx {'on' if fx.display else 'off'}"
-                elif arg == "on":
-                    fx.display = True
-                    msg = "fx on"
-                elif arg == "off":
-                    fx.display = False
-                    msg = "fx off"
-                elif arg in ("auto", "reset"):
-                    fx._pin = None
-                    fx.display = True
-                    msg = "fx auto (reacts to state)"
-                elif arg in ("list", "?"):
-                    msg = "fx: " + ", ".join(FxBar.EFFECTS) + " · auto · on · off"
-                elif arg in FxBar.EFFECTS:
-                    fx._pin = arg
-                    fx.display = True
-                    msg = f"fx pinned: {arg}  (/fx auto to unpin)"
-                else:
-                    msg = f"unknown fx {arg!r} — try /fx list"
-                self.body_write(Text(msg, style="yellow"))
-                return
-            elif text == "/theme" or text.startswith("/theme "):
-                fx = self.query_one("#fx")
-                fx.display = True
-                arg = text[len("/theme") :].strip().lower()
-                # reskin the whole screen too: a named theme repaints chrome; auto
-                # falls back to the default amber chrome (fx then rotates colours).
-                if arg in self.SCREEN_THEMES:
-                    self.theme = arg
-                elif arg in ("auto", "off", "none"):
-                    self.theme = "amber"
-                self.body_write(Text(fx.set_theme(arg), style="yellow"))
-                return
-            elif text.startswith("/rag"):
-                arg = text[len("/rag") :].strip().lower()
-                if arg in ("enable", "on"):
-                    self.runner.rag = True
-                elif arg in ("disable", "off"):
-                    self.runner.rag = False
-                elif arg:
-                    self.body_write(Text("usage: /rag [enable|disable]", style="yellow"))
-                    return
-                self.body_write(
-                    Text(
-                        "recall ENABLED — local code/docs/memory search available"
-                        if self.runner.rag
-                        else "recall DISABLED",
-                        style="yellow",
-                    )
-                )
-            elif text == "/stats":
-                panel = self.query_one("#topstats")
-                panel.display = not panel.display
-                self.stats_on = panel.display
-                self.body_write(
-                    Text(f"stats panel {'on' if panel.display else 'off'}", style="yellow")
-                )
-                return
-            elif text == "/ctx" or text.startswith("/ctx "):
-                from agent.core.compaction import ctx_command
-
-                self.body_write(Text(ctx_command(self.runner, text[len("/ctx") :]), style="yellow"))
-                return
-            elif text == "/kv" or text.startswith("/kv "):
-                self.body_write(Text(self.runner.kv_status(text[len("/kv") :]), style="yellow"))
-                return
-            elif text == "/art":
-                self.runner.art = not self.runner.art
-                state = "ENABLED — generate_image available" if self.runner.art else "DISABLED"
-                self.body_write(
-                    Text(
-                        f"image generation {state} (needs the 'art' extra: uv add mflux)",
-                        style="yellow",
-                    )
-                )
-                return
-            elif text == "/status":
-                self.body_write(
-                    Text(
-                        f"model={self.model}  yolo={self.runner.yolo}  rag={self.runner.rag}  "
-                        f"net={self.runner.net}  workdir={self.workdir}  turns={self.turns}",
-                        style="yellow",
-                    )
-                )
-            else:
-                self.body_write(
-                    Text(
-                        "commands: /yolo  /rag [enable|disable]  /ctx [<n>|max|auto]  /subagents  "
-                        "/subagent <n>  /status  /compact  /self-skill  /model  /fx  /theme  "
-                        "/stop (Esc)  /pause (^P) · exit",
-                        style="yellow",
-                    )
-                )
+            self._dispatch_command(text)
             return
         # attach staged multiline paste(s): typed instruction first, blob after
         if self._pastes:
@@ -261,4 +111,176 @@ class CommandHandler:
             self.body_write(Text(f"\nyou> {preview}", style="bold"))
             self.msg_q.put(text)
 
-    # ---- worker threads ----
+    def _dispatch_command(self, text: str) -> None:
+        """Route a /slash command to its handler. Parsing matches the historical
+        behaviour — some commands match by prefix (/model, /rag, /subagent, /ctx,
+        /kv), and order matters, so keep this chain as-is."""
+        if text == "/stop":
+            self.action_interrupt()
+        elif text == "/pause":
+            self.action_pause()
+        elif text.startswith("/model"):
+            self._handle_model_command(text[len("/model") :].strip())
+        elif text == "/compact":
+            self._cmd_compact()
+        elif text == "/self-skill":
+            self._cmd_self_skill()
+        elif text == "/yolo":
+            self._cmd_yolo()
+        elif text.startswith("/subagent"):
+            self._cmd_subagent(text[len("/subagent") :].lstrip())
+        elif text == "/fx" or text.startswith("/fx "):
+            self._cmd_fx(text[len("/fx") :].strip().lower())
+        elif text == "/theme" or text.startswith("/theme "):
+            self._cmd_theme(text[len("/theme") :].strip().lower())
+        elif text.startswith("/rag"):
+            self._cmd_rag(text[len("/rag") :].strip().lower())
+        elif text == "/stats":
+            self._cmd_stats()
+        elif text == "/ctx" or text.startswith("/ctx "):
+            self._cmd_ctx(text[len("/ctx") :])
+        elif text == "/kv" or text.startswith("/kv "):
+            self._cmd_kv(text[len("/kv") :])
+        elif text == "/art":
+            self._cmd_art()
+        elif text == "/status":
+            self._cmd_status()
+        else:
+            self._cmd_help()
+
+    def _cmd_compact(self) -> None:
+        if self.busy:
+            self.body_write(Text("[/compact: wait until the agent is idle]", style="yellow"))
+        elif not self.messages:
+            self.body_write(Text("[nothing to compact yet]", style="yellow"))
+        else:
+            self.msg_q.put("\x00compact")
+
+    def _cmd_self_skill(self) -> None:
+        if self.busy:
+            self.body_write(Text("[/self-skill: wait until the agent is idle]", style="yellow"))
+        else:
+            self.msg_q.put("\x00self-skill")
+
+    def _cmd_yolo(self) -> None:
+        self.runner.yolo = not self.runner.yolo
+        state = (
+            "ON — commands run without confirmation"
+            if self.runner.yolo
+            else "OFF — commands need approval"
+        )
+        self.body_write(Text(f"yolo {state}", style="yellow"))
+
+    def _cmd_subagent(self, rest: str) -> None:
+        # /subagents (list)  ·  /subagent N (drill in)
+        if rest.lstrip("s").strip() == "" and not rest[:1].isdigit():
+            if not self.subagents:
+                self.body_write(Text("no subagents spawned this session", style="yellow"))
+            else:
+                self.body_write(Text("subagents:", style="yellow"))
+                for s in self.subagents:
+                    self.body_write(Text(f"  [{s.n}] {s.status:<7} {s.label}", style="yellow"))
+                self.body_write(Text("open one with /subagent <n>", style="yellow"))
+        else:
+            arg = rest.lstrip("s").strip()
+            match = next((s for s in self.subagents if str(s.n) == arg), None)
+            if match:
+                self.push_screen(SubagentView(match))
+            else:
+                self.body_write(Text(f"no subagent {arg!r} — /subagents to list", style="red"))
+
+    def _cmd_fx(self, arg: str) -> None:
+        fx = self.query_one("#fx")
+        if arg in ("", "toggle"):
+            fx.display = not fx.display
+            msg = f"fx {'on' if fx.display else 'off'}"
+        elif arg == "on":
+            fx.display = True
+            msg = "fx on"
+        elif arg == "off":
+            fx.display = False
+            msg = "fx off"
+        elif arg in ("auto", "reset"):
+            fx._pin = None
+            fx.display = True
+            msg = "fx auto (reacts to state)"
+        elif arg in ("list", "?"):
+            msg = "fx: " + ", ".join(FxBar.EFFECTS) + " · auto · on · off"
+        elif arg in FxBar.EFFECTS:
+            fx._pin = arg
+            fx.display = True
+            msg = f"fx pinned: {arg}  (/fx auto to unpin)"
+        else:
+            msg = f"unknown fx {arg!r} — try /fx list"
+        self.body_write(Text(msg, style="yellow"))
+
+    def _cmd_theme(self, arg: str) -> None:
+        fx = self.query_one("#fx")
+        fx.display = True
+        # reskin the whole screen too: a named theme repaints chrome; auto falls
+        # back to the default amber chrome (fx then rotates colours).
+        if arg in self.SCREEN_THEMES:
+            self.theme = arg
+        elif arg in ("auto", "off", "none"):
+            self.theme = "amber"
+        self.body_write(Text(fx.set_theme(arg), style="yellow"))
+
+    def _cmd_rag(self, arg: str) -> None:
+        if arg in ("enable", "on"):
+            self.runner.rag = True
+        elif arg in ("disable", "off"):
+            self.runner.rag = False
+        elif arg:
+            self.body_write(Text("usage: /rag [enable|disable]", style="yellow"))
+            return
+        self.body_write(
+            Text(
+                "recall ENABLED — local code/docs/memory search available"
+                if self.runner.rag
+                else "recall DISABLED",
+                style="yellow",
+            )
+        )
+
+    def _cmd_stats(self) -> None:
+        panel = self.query_one("#topstats")
+        panel.display = not panel.display
+        self.stats_on = panel.display
+        self.body_write(Text(f"stats panel {'on' if panel.display else 'off'}", style="yellow"))
+
+    def _cmd_ctx(self, arg: str) -> None:
+        from agent.core.compaction import ctx_command
+
+        self.body_write(Text(ctx_command(self.runner, arg), style="yellow"))
+
+    def _cmd_kv(self, arg: str) -> None:
+        self.body_write(Text(self.runner.kv_status(arg), style="yellow"))
+
+    def _cmd_art(self) -> None:
+        self.runner.art = not self.runner.art
+        state = "ENABLED — generate_image available" if self.runner.art else "DISABLED"
+        self.body_write(
+            Text(
+                f"image generation {state} (needs the 'art' extra: uv add mflux)",
+                style="yellow",
+            )
+        )
+
+    def _cmd_status(self) -> None:
+        self.body_write(
+            Text(
+                f"model={self.model}  yolo={self.runner.yolo}  rag={self.runner.rag}  "
+                f"net={self.runner.net}  workdir={self.workdir}  turns={self.turns}",
+                style="yellow",
+            )
+        )
+
+    def _cmd_help(self) -> None:
+        self.body_write(
+            Text(
+                "commands: /yolo  /rag [enable|disable]  /ctx [<n>|max|auto]  /subagents  "
+                "/subagent <n>  /status  /compact  /self-skill  /model  /fx  /theme  "
+                "/stop (Esc)  /pause (^P) · exit",
+                style="yellow",
+            )
+        )

@@ -15,9 +15,7 @@ import types
 
 sys.path.insert(0, ".")
 
-from agent.tui import AgentApp
-
-submit = AgentApp.on_input_submitted  # unbound; invoked with a fake self
+from agent.tui.commands import CommandHandler
 
 
 class FakeRunner:
@@ -34,7 +32,12 @@ class FakeIO:
         self.steer_q: queue.Queue = queue.Queue()
 
 
-class FakeApp:
+class FakeApp(CommandHandler):
+    """Subclasses the real CommandHandler mixin so on_input_submitted +
+    _dispatch_command + the _cmd_* handlers run for real; only the app's
+    infrastructure (body_write/exit/state) is stubbed. The widget-backed
+    commands (/fx, /theme, /stats) aren't exercised here (they need query_one)."""
+
     def __init__(self, busy=False, confirming=False, messages=None) -> None:
         self.confirming = confirming
         self.busy = busy
@@ -63,7 +66,7 @@ def _event(value: str):
 
 def fire(app: FakeApp, value: str) -> FakeApp:
     ev = _event(value)
-    submit(app, ev)
+    app.on_input_submitted(ev)
     assert ev.input.value == "", "the input box must be cleared on submit"
     return app
 
