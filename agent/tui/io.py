@@ -12,7 +12,6 @@ import threading
 import time
 from typing import TYPE_CHECKING
 
-from rich.markdown import Markdown
 from rich.text import Text
 
 if TYPE_CHECKING:
@@ -29,12 +28,8 @@ class TuiIO:
         self.abort = threading.Event()
         self.pause = threading.Event()
         self.last_decode_tps: float = 0.0
-        # Rendering buffers. Thinking streams live (it's ephemeral reasoning);
-        # answer TEXT is accumulated and rendered as Markdown at each block
-        # boundary (tool call / switch to thinking / end) so code blocks, bold,
-        # lists, etc. format instead of streaming as raw markdown.
-        self._think = ""  # in-flight thinking line (flushed at each newline)
-        self._answer = ""  # accumulated answer text, rendered as Markdown
+        self._line = ""
+        self._kind = "text"
         self._t0 = 0.0
         self._ttft: float | None = None
 
@@ -47,25 +42,10 @@ class TuiIO:
     def _write(self, text: str, style: str = "") -> None:
         self._ui(self.app.body_write, Text(text, style=style))
 
-    def _flush_think(self) -> None:
-        if self._think:
-            self._write(self._think, "dim italic")
-            self._think = ""
-
-    def _render_answer(self) -> None:
-        # Render the accumulated answer as Markdown (formatted, syntax-highlighted
-        # code). Empty/whitespace-only buffers (e.g. a turn that's all tool calls)
-        # produce nothing.
-        if self._answer.strip():
-            self._ui(self.app.body_write, Markdown(self._answer))
-        self._answer = ""
-
-    def _agent_header(self) -> None:
-        # First agent output of a turn writes the "kas" separator (the user
-        # message wrote the "you" one and armed this flag).
-        if getattr(self.app, "_agent_header_pending", False):
-            self._ui(self.app.turn_rule, "kas", "#39d3e8")
-            self.app._agent_header_pending = False
+    def _flush_line(self) -> None:
+        if self._line:
+            self._write(self._line, "dim italic" if self._kind == "thinking" else "")
+            self._line = ""
 
     # ---- interface called by core.agent_turn (agent thread) ----
 
@@ -75,20 +55,16 @@ class TuiIO:
     def delta(self, kind: str, text: str) -> None:
         if self._ttft is None:
             self._ttft = time.time() - self._t0
-        self._agent_header()
-        if kind == "thinking":
-            self._render_answer()  # close any pending answer before reasoning resumes
-            self._think += text
-            while "\n" in self._think:
-                line, self._think = self._think.split("\n", 1)
-                self._write(line, "dim italic")
-        else:  # text -> buffer for Markdown rendering at the block boundary
-            self._flush_think()
-            self._answer += text
+        if kind != self._kind:
+            self._flush_line()
+            self._kind = kind
+        self._line += text
+        while "\n" in self._line:
+            line, self._line = self._line.split("\n", 1)
+            self._write(line, "dim italic" if kind == "thinking" else "")
 
     def stream_finished(self, usage) -> None:
-        self._flush_think()
-        self._render_answer()
+        self._flush_line()
         if usage is not None:
             decode_t = max(0.05, (time.time() - self._t0) - (self._ttft or 0))
             self.last_decode_tps = usage.output_tokens / decode_t
@@ -103,19 +79,16 @@ class TuiIO:
             )
 
     def tool_call(self, name: str, args: dict) -> None:
-        self._flush_think()
-        self._render_answer()  # show the agent's lead-in text before the call
-        self._agent_header()  # a turn may open straight with a tool call
-        self._write(f"  ▸ {name}({json.dumps(args, ensure_ascii=False)[:200]})", "bold #39d3e8")
+        self._flush_line()
+        self._write(f"→ {name}({json.dumps(args, ensure_ascii=False)[:200]})", "bold cyan")
 
     def tool_result(self, output: str, is_error: bool) -> None:
         preview = output if len(output) < 300 else output[:300] + "..."
-        mark, style = ("✗", "red") if is_error else ("✓", "#3fb950")
-        self._write(f"    {mark} {preview}", style)  # indented under its tool call
+        mark, style = ("✗", "red") if is_error else ("✓", "green")
+        self._write(f"  {mark} {preview}", style)
 
     def notice(self, text: str) -> None:
-        self._flush_think()
-        self._render_answer()
+        self._flush_line()
         self._write(text, "yellow")
 
     def confirm(self, command: str) -> str:

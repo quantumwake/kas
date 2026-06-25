@@ -56,9 +56,6 @@ class FakeApp(CommandHandler):
     def body_write(self, renderable) -> None:
         self.writes.append(str(renderable))
 
-    def turn_rule(self, label: str, color: str) -> None:
-        self.writes.append(f"--rule:{label}--")
-
     def exit(self) -> None:
         self.exited = True
 
