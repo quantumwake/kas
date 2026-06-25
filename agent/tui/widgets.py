@@ -109,6 +109,16 @@ class PasteInput(Input):
             return
         super()._on_paste(event)
 
+    def on_key(self, event) -> None:
+        # During a command-confirmation, a single y / n / a answers it (no Enter)
+        # and is NOT typed into the field. Handled here (the focused widget) so it
+        # beats the Input's own character insertion; otherwise keys are normal.
+        ch = (event.character or "").lower()
+        if getattr(self.app, "confirming", False) and ch in ("y", "n", "a"):
+            event.stop()
+            event.prevent_default()
+            self.app.action_confirm(ch)
+
 
 class SelectableRichLog(RichLog):
     """RichLog with mouse text selection.

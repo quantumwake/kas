@@ -375,11 +375,23 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
 
     def enter_confirm(self, command: str) -> None:
         self.confirming = True
-        self.body_write(
-            Text(f"run `{command}`?  answer below: y / N / a=always", style="bold yellow")
-        )
-        self.query_one(Input).placeholder = "y / N / a=always"
+        # A prominent, single-keypress prompt (answered by y/n/a, no Enter).
+        self.body_write(Text("─" * 46, style="#ff8c00"))
+        self.body_write(Text("run this command?", style="bold #ffb000"))
+        self.body_write(Text(f"  $ {command}", style="bold"))
+        self.body_write(Text("  [Y]es     [N]o     [A]lways", style="bold #ffb000"))
+        self.body_write(Text("  press y / n / a  ·  no Enter needed", style="dim"))
+        self.query_one(Input).placeholder = "press  y / n / a"
 
     def exit_confirm(self) -> None:
         self.confirming = False
         self.query_one(Input).placeholder = PLACEHOLDER
+
+    def action_confirm(self, answer: str) -> None:
+        """Resolve the active command-confirmation. Called from PasteInput.on_key
+        on a single y/n/a keypress (see widgets.py)."""
+        if not self.confirming:
+            return
+        self.confirming = False  # guard a second keypress from double-answering
+        self.body_write(Text(f"  → {answer}", style="dim"))
+        self.io.confirm_q.put(answer)  # unblocks the agent thread (TuiIO.confirm)
