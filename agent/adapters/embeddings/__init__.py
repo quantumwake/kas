@@ -111,6 +111,12 @@ def available_embedders() -> list[str]:
     return [n for n, s in REGISTRY.items() if s.supported() and s.installed()]
 
 
+def has_real_embedder() -> bool:
+    """A non-floor embedder is installed + supported here (model2vec / mlx / gguf).
+    Cheap (find_spec only — no model load), so safe for status checks."""
+    return any(n != "hashing" for n in available_embedders())
+
+
 def _selection_order(name: str | None) -> list[str]:
     auto = sorted(
         (n for n, s in REGISTRY.items() if s.auto),

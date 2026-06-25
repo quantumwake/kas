@@ -3,9 +3,11 @@ reindex, geometry-change rebuild, and RRF fusion with BM25 in the aggregator.
 
 Uses the zero-dep HashingEmbedder (no model/network) so it's deterministic. When
 sqlite-vec isn't installed it just prints "skipped" and returns (no SystemExit, so
-the pytest characterization runner stays green). Run it with the extension:
+the pytest characterization runner stays green). Run it with the extension (and
+model2vec so the store registry counts vector as installed — the actual embedder
+stays the deterministic hashing floor via KAS_EMBEDDER):
 
-    uv run --with sqlite-vec python tests/test_vector.py
+    uv run --with sqlite-vec --with model2vec python tests/test_vector.py
 """
 
 import importlib.util
@@ -17,6 +19,10 @@ import tempfile
 sys.path.insert(0, ".")
 
 os.environ["KAS_EMBEDDER"] = "hashing"  # deterministic, offline; for the Memory path
+
+import agent.adapters.retrieval.stores as stores
+
+stores.CONFIG = pathlib.Path(tempfile.mkdtemp()) / "memory.json"  # isolate from $HOME
 
 # These imports are safe without sqlite-vec (the extension is imported lazily,
 # only inside VectorBackend methods once it's known to be available).

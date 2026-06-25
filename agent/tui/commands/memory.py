@@ -1,11 +1,17 @@
-"""/memory — inspect and search local recall (code / docs / session memory).
+"""/memory — inspect, search, and manage local recall (code / docs / sessions).
 
-  /memory               status: backends, indexed sources + counts, db size
-  /memory on | off      toggle whether the agent can call the recall tool
-  /memory search <q>    run a recall query and show the hits in the TUI
+  /memory                  status: stores, platform/install/enabled state, embedders
+  /memory on | off         toggle whether the agent can call the recall tool
+  /memory search <q>       run a recall query and show the hits in the TUI
+  /memory enable  <store>  turn a store on   (persisted to ~/.kascode/memory.json)
+  /memory disable <store>  turn a store off
+  /memory install <name>   install a store / embedder for THIS os/arch (vector|mlx|gguf)
 
-`/rag` is kept as a (deprecated) alias for the same command.
+`/rag` is kept as a (deprecated) alias.
 """
+
+import subprocess
+import threading
 
 from rich.text import Text
 
@@ -14,10 +20,13 @@ from .base import Command
 
 class MemoryCommand(Command):
     name = "/memory"
-    summary = "inspect & search local memory (code / docs / sessions)"
-    usage = "[on|off|search <q>]"
+    summary = "inspect, search & manage local memory stores"
+    usage = "[on|off|search <q>|enable/disable <s>|install <n>]"
     subcommands = (
         ("search", "run a recall query and show hits — /memory search <q>"),
+        ("enable", "turn a store on — /memory enable <store>"),
+        ("disable", "turn a store off — /memory disable <store>"),
+        ("install", "install a store/embedder for this host — /memory install <vector|mlx|gguf>"),
         ("on", "let the agent use the recall tool"),
         ("off", "disable the recall tool"),
     )
@@ -28,36 +37,106 @@ class MemoryCommand(Command):
 
     def run(self, app, arg: str) -> None:
         arg = arg.strip()
-        low = arg.lower()
-        if low in ("on", "enable"):
+        verb, _, rest = arg.partition(" ")
+        verb, rest = verb.lower(), rest.strip()
+        if verb in ("on", "enable") and not rest:
             app.runner.rag = True
             self._status(app)
-        elif low in ("off", "disable"):
+        elif verb in ("off", "disable") and not rest:
             app.runner.rag = False
             self._status(app)
-        elif low.startswith("search"):
-            query = arg[len("search") :].strip()
-            if not query:
+        elif verb in ("enable", "disable"):
+            self._toggle(app, rest, on=verb == "enable")
+        elif verb == "install":
+            self._install(app, rest)
+        elif verb == "search":
+            if not rest:
                 app.body_write(Text("usage: /memory search <query>", style="yellow"))
                 return
             app.body_write(Text("[memory: indexing + searching…]", style="dim"))
-            self._run_off_thread(app, lambda: app.runner.memory.search_lines(query))
-        elif low in ("", "status"):
-            app.body_write(Text("[memory: indexing…]", style="dim"))
-            self._run_off_thread(app, lambda: app.runner.memory.status_lines(app.runner.rag))
+            self._off_thread(app, lambda: app.runner.memory.search_lines(rest))
+        elif verb in ("", "status"):
+            self._status(app)
         else:
-            app.body_write(Text("usage: /memory [on|off|search <q>]", style="yellow"))
+            app.body_write(
+                Text("usage: /memory [on|off|search|enable|disable|install]", style="yellow")
+            )
+
+    # -- subcommands ----------------------------------------------------------
 
     @staticmethod
     def _status(app) -> None:
         app.body_write(Text("[memory: indexing…]", style="dim"))
-        MemoryCommand._run_off_thread(app, lambda: app.runner.memory.status_lines(app.runner.rag))
+        MemoryCommand._off_thread(app, lambda: app.runner.memory.status_lines(app.runner.rag))
 
     @staticmethod
-    def _run_off_thread(app, produce) -> None:
+    def _toggle(app, name: str, on: bool) -> None:
+        from agent.adapters.retrieval.stores import STORES, set_enabled
+
+        if name not in STORES:
+            app.body_write(Text(f"unknown store {name!r} — have: {', '.join(STORES)}", style="red"))
+            return
+        set_enabled(name, on)
+        app.runner.memory._instances.clear()  # rebuild active set next call
+        app.body_write(Text(f"store {name} {'enabled' if on else 'disabled'}", style="green"))
+        MemoryCommand._status(app)
+
+    @staticmethod
+    def _install(app, name: str) -> None:
+        from agent.adapters.retrieval.stores import INSTALLS, install_command
+
+        if name not in INSTALLS:
+            app.body_write(
+                Text(f"nothing to install for {name!r} — try: {', '.join(INSTALLS)}", style="red")
+            )
+            return
+        cmd = install_command(name)
+        if cmd is None:
+            app.body_write(
+                Text(
+                    f"'{name}' isn't supported on this OS/arch — pick another "
+                    f"(have: {', '.join(INSTALLS)})",
+                    style="yellow",
+                )
+            )
+            return
+        app.body_write(Text(f"[installing {name}: {' '.join(cmd)} …]", style="yellow"))
+
+        def work() -> None:
+            try:
+                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+                ok = proc.returncode == 0
+                tail = (proc.stdout + proc.stderr).strip().splitlines()[-4:]
+                for line in tail:
+                    app.call_from_thread(app.body_write, Text(f"  {line}", style="dim"))
+                if ok:
+                    import importlib
+
+                    importlib.invalidate_caches()  # so find_spec sees the new packages
+                    app.runner.memory._instances.clear()  # re-resolve embedder/availability
+                    app.call_from_thread(
+                        app.body_write,
+                        Text(f"[{name} installed — /memory to verify]", style="green"),
+                    )
+                    app.call_from_thread(
+                        app.body_write, Text("[restart kas if it doesn't light up]", style="dim")
+                    )
+                else:
+                    app.call_from_thread(
+                        app.body_write, Text(f"[install of {name} failed — see above]", style="red")
+                    )
+            except Exception as exc:
+                app.call_from_thread(
+                    app.body_write,
+                    Text(f"[install error: {type(exc).__name__}: {exc}]", style="red"),
+                )
+
+        threading.Thread(target=work, daemon=True).start()
+
+    @staticmethod
+    def _off_thread(app, produce) -> None:
         """Indexing can take a beat on a cold index — do it off the UI thread and
         marshal the rendered (text, style) rows back via call_from_thread."""
-        import threading
 
         def work() -> None:
             try:

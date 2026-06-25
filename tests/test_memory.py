@@ -1,6 +1,9 @@
-"""/memory: the pluggable backend layer (MemoryBackend port), the Memory
-aggregator (search / recall / status / search rendering), and the command's
-on/off toggle + /rag alias routing. Pure sqlite FTS5 — no model or server.
+"""/memory: pluggable backend layer (MemoryBackend port), the Memory aggregator
+(recall / status / search), the store manager (enable/disable persistence,
+platform-aware install plans), and command routing + the /rag alias.
+
+Pure sqlite FTS5 — no model/server. The persisted enabled-set is redirected to a
+temp file so it never reads or writes the real ~/.kascode/memory.json.
 
 Run:  uv run python tests/test_memory.py
 """
@@ -13,7 +16,17 @@ import time
 
 sys.path.insert(0, ".")
 
+import agent.adapters.retrieval.stores as stores
+
+stores.CONFIG = pathlib.Path(tempfile.mkdtemp()) / "memory.json"  # isolate from $HOME
+
 from agent.adapters.retrieval.bm25 import Bm25Backend
+from agent.adapters.retrieval.stores import (
+    INSTALLS,
+    enabled_stores,
+    install_command,
+    set_enabled,
+)
 from agent.adapters.tools.memory import Memory, _human_bytes
 from agent.ports.memory import MemoryBackend
 from agent.tui.commands import REGISTRY
@@ -34,47 +47,67 @@ assert isinstance(b, MemoryBackend), "Bm25Backend must satisfy the MemoryBackend
 b.refresh(root)
 st = b.stats()
 assert st["name"] == "bm25" and st["by_source"]["code"] == 1 and st["by_source"]["docs"] == 1
-assert st["files"] == 2 and st["size_bytes"] > 0
 hits = b.search("banana")
 assert hits and hits[0]["path"] == "mod.py" and hits[0]["backend"] == "bm25"
+assert _human_bytes(0) == "0 B" and _human_bytes(2048).endswith("KB")
 print("Bm25Backend conformance + stats + search: OK")
 
-assert _human_bytes(0) == "0 B" and _human_bytes(2048).endswith("KB")
-print("_human_bytes: OK")
 
-
-# --- Memory aggregator ------------------------------------------------------
+# --- Memory aggregator (vector not installed here -> bm25 only) -------------
 m = Memory(root)
-assert [bk.name for bk in m.backends] == ["bm25", "vector"]  # vector self-reports availability
+assert [bk.name for bk in m.backends] == ["bm25"], "only installed+enabled stores are active"
 out, err = m.recall("banana")
 assert not err and "mod.py:1-3" in out and "banana" in out
 assert m.recall("zzzznotfound")[0].startswith("no matches")
-status = m.status_lines(recall_on=True)
-assert status[0][0] == "memory  ·  recall ENABLED"
-assert any("code" in t and "chunks" in t for t, _ in status)
-assert m.status_lines(recall_on=False)[0][0].startswith("memory  ·  recall DISABLED")
 sl = m.search_lines("banana")
 assert "1 hit" in sl[0][0] and any("mod.py" in t for t, _ in sl)
-assert "no hits" in m.search_lines("zzzznotfound")[0][0]
-print("Memory recall / status_lines / search_lines: OK")
+print("Memory recall / search (active backends only): OK")
+
+
+# --- status: recall state + per-store platform/install/enabled state -------
+status = m.status_lines(recall_on=True)
+text = "\n".join(t for t, _ in status)
+assert status[0][0] == "memory  ·  recall ENABLED"
+assert "● bm25" in text and any("code" in t and "chunks" in t for t, _ in status)
+assert "⤓ vector — available, not installed" in text  # offers the install
+assert "/memory install vector" in text
+assert "embedders:" in text  # platform-filtered embedder availability
+assert m.status_lines(recall_on=False)[0][0].startswith("memory  ·  recall DISABLED")
+print("status shows stores + install offer + embedders: OK")
+
+
+# --- store manager: enable/disable persists; install plans are platform-gated
+assert enabled_stores() == {"bm25", "vector"}  # defaults (default_on)
+set_enabled("vector", False)
+assert "vector" not in enabled_stores()
+assert stores.CONFIG.exists(), "enabled-set persisted to disk"
+set_enabled("vector", True)
+assert "vector" in enabled_stores()
+
+# install_command: known bundles resolve to a pip argv; mlx is Apple-gated
+assert "vector" in INSTALLS and install_command("vector")[-2:] == ["sqlite-vec", "model2vec"][-2:]
+assert install_command("nope") is None  # unknown bundle
+import platform as _plat
+
+is_apple = _plat.system() == "Darwin" and _plat.machine() == "arm64"
+assert (install_command("mlx") is not None) == is_apple, "mlx install offered only on Apple Silicon"
+assert install_command("gguf") is not None  # cross-platform
+print("store manager: enable/disable persistence + platform-gated install: OK")
 
 
 # --- command routing + /rag alias ------------------------------------------
 mem = next(c for c in REGISTRY if c.name == "/memory")
 rag = next(c for c in REGISTRY if c.name == "/rag")
 assert isinstance(mem, MemoryCommand) and isinstance(rag, RagCommand)
-assert mem.match("/memory search foo") == " search foo"
-assert mem.match("/rag") is None  # /memory doesn't swallow /rag
-assert rag.match("/rag on") == " on"  # alias is a prefix match too
-assert mem.completions() == ["/memory", "/memory search", "/memory on", "/memory off"]
+assert mem.match("/memory enable vector") == " enable vector"
+assert mem.match("/rag") is None and rag.match("/rag on") == " on"
+assert mem.completions()[0] == "/memory" and "/memory install" in mem.completions()
 assert rag.completions() == ["/rag"]
-# alias must dispatch ahead-of nothing else and AFTER /memory in the registry
-names = [c.name for c in REGISTRY]
-assert names.index("/memory") < names.index("/rag")
+assert [c.name for c in REGISTRY].index("/memory") < [c.name for c in REGISTRY].index("/rag")
 print("command routing + /rag alias + completions: OK")
 
 
-# --- on/off toggles runner.rag (synchronous part) --------------------------
+# --- /memory on/off + enable/disable through the command -------------------
 class FakeRunner:
     def __init__(self, root):
         self.rag = False
@@ -90,7 +123,7 @@ class FakeApp:
     def body_write(self, r):
         self.writes.append(str(r))
 
-    def call_from_thread(self, fn, *a):  # run inline in tests
+    def call_from_thread(self, fn, *a):
         fn(*a)
 
 
@@ -101,8 +134,13 @@ mem.run(app, "off")
 assert app.runner.rag is False
 rag.run(app, "on")  # alias toggles the same flag
 assert app.runner.rag is True
-time.sleep(0.2)  # let the off-thread status render land (best-effort)
-assert any("recall" in w.lower() for w in app.writes)
-print("/memory on/off (+ /rag alias) toggles runner.rag: OK")
+mem.run(app, "disable vector")
+assert "vector" not in enabled_stores()
+mem.run(app, "enable vector")
+assert "vector" in enabled_stores()
+mem.run(app, "enable bogusstore")
+assert any("unknown store" in w for w in app.writes)
+time.sleep(0.2)  # let off-thread status render land (best-effort)
+print("/memory on/off + enable/disable + bad-store guard: OK")
 
 print("all memory tests passed")

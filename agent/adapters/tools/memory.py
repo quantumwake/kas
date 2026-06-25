@@ -1,9 +1,9 @@
 """Memory — the aggregator over pluggable recall backends (agent.ports.memory).
 
-It owns the `recall` tool surface (hits formatted for the model, unchanged from
-the old Recaller) and the introspection the /memory command renders (status +
-in-TUI search). Backends are built lazily; today that's just Bm25Backend, but the
-list is the single place a KgBackend / vector backend plugs in.
+It owns the `recall` tool surface (hits formatted for the model, fused across
+backends via RRF) and the introspection the /memory command renders (status +
+in-TUI search). The ACTIVE backends are the enabled (persisted) ∩ installed stores
+from the registry (agent.adapters.retrieval.stores) — built lazily here.
 """
 
 import pathlib
@@ -25,19 +25,23 @@ class Memory:
 
     def __init__(self, workdir: pathlib.Path) -> None:
         self.workdir = pathlib.Path(workdir)
-        self._backends: list | None = None
+        self._instances: dict = {}  # name -> backend instance (lazy)
+
+    def _instance(self, name: str):
+        if name not in self._instances:
+            from ..retrieval.stores import STORES
+
+            (self.workdir / ".agent").mkdir(parents=True, exist_ok=True)
+            self._instances[name] = STORES[name].build(self.workdir)
+        return self._instances[name]
 
     @property
     def backends(self) -> list:
-        if self._backends is None:
-            from ..retrieval.bm25 import Bm25Backend
-            from ..retrieval.vector import VectorBackend
+        """The ACTIVE backends: enabled (persisted) ∩ installed on this host."""
+        from ..retrieval.stores import STORES, enabled_stores
 
-            (self.workdir / ".agent").mkdir(parents=True, exist_ok=True)
-            # Vector is always present but self-reports unavailability (no
-            # sqlite-vec / no embedder) — so /memory can tell you how to enable it.
-            self._backends = [Bm25Backend(self.workdir), VectorBackend(self.workdir)]
-        return self._backends
+        en = enabled_stores()
+        return [self._instance(n) for n, spec in STORES.items() if n in en and spec.installed()]
 
     def refresh(self) -> None:
         for b in self.backends:
@@ -96,31 +100,54 @@ class Memory:
     # -- introspection for /memory -------------------------------------------
 
     def status_lines(self, recall_on: bool) -> list[tuple[str, str]]:
-        """(text, style) rows describing every backend's indexed contents."""
-        self.refresh()  # so the counts reflect reality, not a stale/empty index
+        """(text, style) rows: recall state, every store's platform/install/enabled
+        state (with indexed counts when active), and embedder availability."""
+        from ..embeddings import REGISTRY as EMB
+        from ..retrieval.stores import EMBEDDER_BUNDLE, INSTALLS, STORES, enabled_stores
+
+        self.refresh()  # active backends only -> counts reflect reality
+        en = enabled_stores()
         head = "ENABLED" if recall_on else "DISABLED (/memory on)"
         lines: list[tuple[str, str]] = [(f"memory  ·  recall {head}", "bold #ffb000")]
-        for b in self.backends:
-            try:
-                st = b.stats()
-            except Exception as exc:
-                lines.append((f"  {b.name}: stats failed — {exc}", "red"))
-                continue
-            if st.get("unavailable"):  # e.g. vector with no sqlite-vec/embedder
-                lines.append((f"  {st['name']}  —  {st.get('label', '')}", "dim"))
-                continue
-            size = _human_bytes(st.get("size_bytes", 0))
-            files = st.get("files", 0)
-            lines.append(
-                (f"  {st['name']}  —  {st.get('label', '')}", "yellow"),
-            )
-            lines.append((f"      {size}  ·  {files} files  ·  {st.get('path', '')}", "dim"))
-            by_source = st.get("by_source") or {}
-            if by_source:
-                for src, n in sorted(by_source.items()):
-                    lines.append((f"      {src:<8} {n} chunks", "yellow"))
+
+        for name, spec in STORES.items():
+            if not spec.supported():
+                lines.append((f"  ✗ {name} — not supported on this OS/arch", "dim"))
+            elif not spec.installed():
+                note = INSTALLS[name].note if name in INSTALLS else ""
+                lines.append(
+                    (f"  ⤓ {name} — available, not installed · /memory install {name}", "yellow")
+                )
+                if note:
+                    lines.append((f"      {note}", "dim"))
             else:
-                lines.append(("      (empty — nothing indexed yet)", "dim"))
+                active = name in en
+                mark, hint = ("●", "") if active else ("○", f"  · /memory enable {name}")
+                inst = self._instance(name)
+                try:
+                    st = inst.stats()
+                except Exception as exc:
+                    lines.append((f"  {mark} {name} — stats failed: {exc}", "red"))
+                    continue
+                lines.append((f"  {mark} {name} — {st.get('label', spec.label)}{hint}", "yellow"))
+                if active:
+                    size, files = _human_bytes(st.get("size_bytes", 0)), st.get("files", 0)
+                    lines.append((f"      {size} · {files} files", "dim"))
+                    for src, n in sorted((st.get("by_source") or {}).items()):
+                        lines.append((f"      {src:<8} {n} chunks", "yellow"))
+
+        # which embedders the vector store could use here (platform-filtered)
+        embs = []
+        for n, spec in sorted(EMB.items(), key=lambda kv: kv[1].priority):
+            if n == "hashing":
+                continue
+            if not spec.supported():
+                continue  # hide runtimes this OS/arch can't run
+            bundle = EMBEDDER_BUNDLE.get(n, n)
+            state = "installed" if spec.installed() else f"install: /memory install {bundle}"
+            embs.append(f"{n} ({state})")
+        if embs:
+            lines.append((f"  embedders:  {'  ·  '.join(embs)}", "dim"))
         return lines
 
     def search_lines(self, query: str, k: int = 8) -> list[tuple[str, str]]:
