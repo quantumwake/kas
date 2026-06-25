@@ -30,8 +30,8 @@
 | 1 | Security quick wins | **sandbox default-on**, `max_tokens` cap, body-size limit | Low | 0 | ✅ done |
 | 2 | Test net (pre-refactor) | Characterization tests for the modules about to change | Low | 0 | ✅ done |
 | 3 | Decompose `tui.py` | 1,538L → `agent/tui/` package, no file >400L | Medium | 2 | ✅ done |
-| 4 | Split god-functions | `agent_turn`, `on_input_submitted`, `generate`, `cli.main`, `pipeline.run` | High | 2 | ⬜ next |
-| 5 | Ports hygiene | Formal `AgentIO` conformance; ports for `SessionStore`, `Workspace` | Medium | 4 | ⬜ |
+| 4 | Split god-functions | `agent_turn`, `on_input_submitted`, `generate`, `cli.main`, `pipeline.run` | High | 2 | ✅ done |
+| 5 | Ports hygiene | Formal `AgentIO` conformance; ports for `SessionStore`, `Workspace` | Medium | 4 | ⬜ next |
 | 6 | Adapter cleanup | Thin `ToolRunner`; decompose `engine.py` | Medium | 5 | ⬜ |
 
 **Progress (v3 branch):** Phase 0 — `14e9bde` (tooling/CI) + `9bb9a38` (strict
@@ -44,9 +44,24 @@ coverage ~45%**; a headless TUI smoke test guards the decomposition.
 
 > Phase 3 note: the `tui.py` decomposition split classes/methods into mixins
 > (FxEffects, CommandHandler, StatsPanel, WorkerLoops) rather than rewriting
-> bodies — so it's behaviour-preserving. `on_input_submitted` itself is still a
-> 180-line method (now in commands.py); breaking it into a per-command registry
-> is folded into Phase 4 (god-function splits).
+> bodies — so it's behaviour-preserving.
+
+**Phase 4 results** (behaviour-preserving, guarded by the test net):
+
+| Function | Before | After | Guard |
+|----------|:------:|:-----:|-------|
+| `on_input_submitted` | 180L/55br | **30L/11br** (+ dispatcher + `_cmd_*`) | test_commands, test_tui_smoke |
+| `agent_turn` | 232L/60br | **194L/40br** (+ `_stream_response`/`_execute_tool_calls`/`_select_tools`) | test_loop |
+| `cli.main` | 241L/38br | **127L/21br** (+ `_build_parser`/`_run_plain_repl`) | --help, server-down path |
+| `pipeline.run` | 136L/24br | **111L/19br** (+ `_prompt_tokens`/`_write_memo`) | test_api, live engine |
+| `engine.generate` | 173L/29br | **left as-is** | live engine |
+
+> `engine.generate` was deliberately **not** split: it's already decomposed into
+> well-named nested functions (`reuse_cache`, `produce`, `on_prefill`) that close
+> over mutable MLX cache state on the worker thread. Extracting them to methods is
+> error-prone, only the live-GPU test would catch a regression, and it wouldn't
+> improve clarity. The residual length in `agent_turn` (loop orchestration) and
+> `main` (composition wiring) is inherent; branch density dropped sharply in both.
 
 Order rationale: tooling → safety net → mechanical splits (tui) → risky logical
 splits (functions) → structural (ports) → deep adapter work. Tests precede every
