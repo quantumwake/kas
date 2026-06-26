@@ -130,7 +130,11 @@ class MlxEngine:
         self._ready.set()
 
         while True:
-            out_q, cancel, produce = self._jobs.get()
+            job = self._jobs.get()
+            if job is None:  # close() sentinel — exit so this engine can be GC'd
+                self._model = self._tokenizer = self._slots = None
+                return
+            out_q, cancel, produce = job
             self._active_cancel = cancel  # exposed to request_cancel() + on_prefill
             try:
                 for item in produce():
@@ -142,6 +146,14 @@ class MlxEngine:
                 out_q.put(("error", exc))
             finally:
                 self._active_cancel = None
+
+    def close(self) -> None:
+        """Stop the worker and drop model references so the registry can evict this
+        engine and free its GPU memory. Best-effort; safe to call more than once."""
+        try:
+            self._jobs.put(None)  # sentinel breaks the worker loop
+        except Exception:
+            pass
 
     def _load_model(self, model_id: str) -> None:
         """Worker-thread only: load (or swap to) a model and reset all state."""
