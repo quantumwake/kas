@@ -1,16 +1,14 @@
 """/memory — inspect, search, and manage local recall (code / docs / sessions).
 
-  /memory                  status: stores, platform/install/enabled state, embedders
-  /memory on | off         toggle whether the agent can call the recall tool
-  /memory search <q>       run a recall query and show the hits in the TUI
-  /memory reindex [full]   rescan changed files (full = wipe + rebuild)
-  /memory clear            drop the indexes, leaving the stores empty
-  /memory enable  <store>  turn a store on   (persisted to ~/.kascode/memory.json)
-  /memory disable <store>  turn a store off
-  /memory install vector [fmt]   install the vector store + an embedder format
-                                 (fmt: model2vec [default] | mlx | gguf, chip-gated)
-
-`/rag` is kept as a (deprecated) alias.
+/memory                  status: stores, platform/install/enabled state, embedders
+/memory on | off         toggle whether the agent can call the recall tool
+/memory search <q>       run a recall query and show the hits in the TUI
+/memory reindex [full]   rescan changed files (full = wipe + rebuild)
+/memory clear            drop the indexes, leaving the stores empty
+/memory enable  <store>  turn a store on   (persisted to ~/.kascode/memory.json)
+/memory disable <store>  turn a store off
+/memory install vector [fmt]   install the vector store + an embedder format
+                               (fmt: model2vec [default] | mlx | gguf, chip-gated)
 """
 
 import subprocess
@@ -37,7 +35,7 @@ class MemoryCommand(Command):
     )
 
     def match(self, text: str) -> str | None:
-        # prefix match so "/memory search ..." and the /rag alias both route here
+        # prefix match so "/memory search ..." (with an arg) routes here too
         return text[len(self.name) :] if text.startswith(self.name) else None
 
     def run(self, app, arg: str) -> None:
@@ -162,15 +160,3 @@ class MemoryCommand(Command):
                     pass
 
         threading.Thread(target=work, daemon=True).start()
-
-
-class RagCommand(MemoryCommand):
-    """Deprecated alias for /memory (the flag is still `runner.rag` internally)."""
-
-    name = "/rag"
-    summary = "→ alias for /memory"
-    usage = ""
-    subcommands = ()
-
-    def completions(self) -> list[str]:
-        return ["/rag"]  # keep the menu/Tab clean — subcommands live under /memory

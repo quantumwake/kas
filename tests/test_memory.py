@@ -1,6 +1,6 @@
 """/memory: pluggable backend layer (MemoryBackend port), the Memory aggregator
 (recall / status / search), the store manager (enable/disable persistence,
-platform-aware install plans), and command routing + the /rag alias.
+platform-aware install plans), and command routing.
 
 Pure sqlite FTS5 — no model/server. The persisted enabled-set is redirected to a
 temp file so it never reads or writes the real ~/.kascode/memory.json.
@@ -29,7 +29,7 @@ from agent.adapters.retrieval.stores import (
 from agent.adapters.tools.memory import Memory, _human_bytes
 from agent.ports.memory import MemoryBackend
 from agent.tui.commands import REGISTRY
-from agent.tui.commands.memory import MemoryCommand, RagCommand
+from agent.tui.commands.memory import MemoryCommand
 
 
 def _workspace() -> pathlib.Path:
@@ -113,16 +113,13 @@ assert install_command("vector", "gguf")[0] is not None  # cross-platform
 print("store manager: enable/disable persistence + store+embedder install: OK")
 
 
-# --- command routing + /rag alias ------------------------------------------
+# --- command routing (no /rag alias anymore) -------------------------------
 mem = next(c for c in REGISTRY if c.name == "/memory")
-rag = next(c for c in REGISTRY if c.name == "/rag")
-assert isinstance(mem, MemoryCommand) and isinstance(rag, RagCommand)
+assert isinstance(mem, MemoryCommand)
+assert not any(c.name == "/rag" for c in REGISTRY), "/rag alias was removed"
 assert mem.match("/memory enable vector") == " enable vector"
-assert mem.match("/rag") is None and rag.match("/rag on") == " on"
 assert mem.completions()[0] == "/memory" and "/memory install" in mem.completions()
-assert rag.completions() == ["/rag"]
-assert [c.name for c in REGISTRY].index("/memory") < [c.name for c in REGISTRY].index("/rag")
-print("command routing + /rag alias + completions: OK")
+print("command routing + no /rag alias: OK")
 
 
 # --- /memory on/off + enable/disable through the command -------------------
@@ -150,7 +147,7 @@ mem.run(app, "on")
 assert app.runner.rag is True
 mem.run(app, "off")
 assert app.runner.rag is False
-rag.run(app, "on")  # alias toggles the same flag
+mem.run(app, "on")  # back on for the rest of the checks
 assert app.runner.rag is True
 mem.run(app, "disable vector")
 assert "vector" not in enabled_stores()

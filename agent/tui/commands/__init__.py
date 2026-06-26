@@ -17,7 +17,7 @@ from .ctx import CtxCommand
 from .fx import FxCommand
 from .help import HelpCommand
 from .kv import KvCommand
-from .memory import MemoryCommand, RagCommand
+from .memory import MemoryCommand
 from .model import ModelCommand
 from .pause import PauseCommand
 from .sandbox import SandboxCommand
@@ -31,7 +31,7 @@ from .theme import ThemeCommand
 from .viz import VizCommand
 from .yolo import YoloCommand
 
-# Ordered: prefix-matching commands (/model, /rag, /subagent) keep their relative
+# Ordered: prefix-matching commands (/model, /memory, /subagent) keep their relative
 # order so none shadows another — this mirrors the historical dispatch order.
 REGISTRY = [
     StopCommand(),
@@ -47,7 +47,6 @@ REGISTRY = [
     ThemeCommand(),
     VizCommand(),
     MemoryCommand(),
-    RagCommand(),  # deprecated alias — keep after /memory so it doesn't shadow it
     StatsCommand(),
     CtxCommand(),
     KvCommand(),

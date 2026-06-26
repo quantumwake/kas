@@ -1,6 +1,6 @@
 """Anthropic tool schemas advertised to the model. Pure data: the core loop
 selects which sets to send (base TOOLS always; SUBAGENT_TOOL unless already a
-subagent; RAG_TOOLS with --rag; WEB_TOOLS with --net), and the ToolRunner
+subagent; RAG_TOOLS with --memory; WEB_TOOLS with --net), and the ToolRunner
 adapter implements them.
 """
 
@@ -80,7 +80,7 @@ WEB_TOOLS: list[dict] = [
     },
 ]
 
-# Opt-in local retrieval (--rag / KAS_RAG): ranked BM25 recall over the
+# Opt-in local retrieval (--memory / KAS_MEMORY): ranked recall over the
 # codebase, docs, and past session memory (including content compaction
 # dropped). Complements grep — use it for "where/how is X" and to recall
 # earlier decisions; use grep for exact strings.

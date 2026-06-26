@@ -248,10 +248,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="enable web_search/web_fetch (off by default — kas is offline)",
     )
     ap.add_argument(
-        "--rag",
+        "--memory",
+        dest="memory",
         action=argparse.BooleanOptionalAction,
-        default=os.environ.get("KAS_RAG", "1") != "0",
-        help="recall tool — local BM25 over code/docs/memory (on by default; --no-rag to disable)",
+        default=os.environ.get("KAS_MEMORY", "1") != "0",
+        help="recall tool — local memory over code/docs/sessions "
+        "(on by default; --no-memory to disable)",
     )
     ap.add_argument(
         "--sandbox",
@@ -463,7 +465,7 @@ def main() -> None:
             io=io,
             checkpoint=args.checkpoint,
             net=args.net,
-            rag=args.rag,
+            rag=args.memory,
             context_limit=context_limit,
             sandbox=args.sandbox,
             compact_at=config.COMPACT_AT,
@@ -492,7 +494,7 @@ def main() -> None:
             messages=messages,
             checkpoint=args.checkpoint,
             net=args.net,
-            rag=args.rag,
+            rag=args.memory,
             context_limit=context_limit,
             sandbox=args.sandbox,
             art=args.art,
@@ -511,7 +513,7 @@ def main() -> None:
         io=io,
         checkpoint=args.checkpoint,
         net=args.net,
-        rag=args.rag,
+        rag=args.memory,
         context_limit=context_limit,
         sandbox=args.sandbox,
     )

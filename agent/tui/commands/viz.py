@@ -21,15 +21,20 @@ class VizCommand(Command):
 
     def run(self, app, arg: str) -> None:
         m = app.viz
-        a = arg.strip().lower()
-        if a in ("all", "on"):
+        toks = arg.strip().lower().split()
+        valid = ("heatmap", "topk", "entropy")
+        if toks in ([], ["status"]):
+            pass  # just report the current state
+        elif toks in (["all"], ["on"]):
             m.heatmap = m.topk = m.entropy = True
-        elif a in ("off", "none"):
+        elif toks[0] in ("off", "none"):
             m.heatmap = m.topk = m.entropy = False
-        elif a in ("heatmap", "topk", "entropy"):
-            setattr(m, a, not getattr(m, a))  # independent toggle
-        elif a not in ("", "status"):
-            app.body_write(Text("usage: /viz [heatmap|topk|entropy|all|off]", style="yellow"))
+        elif all(t in valid for t in toks):
+            # set EXACTLY the named overlays (not a toggle): '/viz heatmap' -> just
+            # heatmap; '/viz heatmap entropy' -> those two; the rest off.
+            m.heatmap, m.topk, m.entropy = (v in toks for v in valid)
+        else:
+            app.body_write(Text("usage: /viz [heatmap|topk|entropy …|all|off]", style="yellow"))
             return
         if not (m.topk or m.entropy):  # the panel only serves top-k / entropy
             getattr(app, "hide_viz_panel", lambda: None)()

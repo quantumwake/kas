@@ -61,15 +61,15 @@ class FakeApp:
 cmd = next(c for c in REGISTRY if c.name == "/viz")
 assert isinstance(cmd, VizCommand)
 app = FakeApp()
-cmd.run(app, "heatmap")
-assert app.viz.heatmap and not app.viz.topk
-cmd.run(app, "heatmap")  # independent toggle off
-assert not app.viz.heatmap
+cmd.run(app, "heatmap")  # selects EXACTLY heatmap (not a toggle)
+assert app.viz.heatmap and not app.viz.topk and not app.viz.entropy
+cmd.run(app, "heatmap entropy")  # selects exactly those two
+assert app.viz.heatmap and app.viz.entropy and not app.viz.topk
 cmd.run(app, "all")
 assert app.viz.heatmap and app.viz.topk and app.viz.entropy
 cmd.run(app, "off")
 assert not app.viz.any_on
 assert cmd.completions()[0] == "/viz" and "/viz topk" in cmd.completions()
-print("/viz command toggles + completions: OK")
+print("/viz command exact-select + completions: OK")
 
 print("all viz tests passed")
