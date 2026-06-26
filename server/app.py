@@ -173,6 +173,10 @@ def messages(req: MessagesRequest, request: Request):
     # Each conversation thread (main agent + each subagent) gets its own KV
     # cache slot + continuation memo, keyed by this header.
     thread = request.headers.get("x-agent-thread", "main")
+    # Diagnostic: two concurrent agents MUST show different threads here. If both
+    # log thread=main they're sharing a KV slot + continuation memo (e.g. an agent
+    # process running pre-fix code) — restart the agents.
+    log.info("turn model=%s thread=%s stream=%s", req.model, thread, req.stream)
 
     # Warm KV-resume: if persistence is on and the agent told us its session
     # dir, rehydrate this thread's KV cache + continuation memo from disk before
