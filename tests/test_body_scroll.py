@@ -31,6 +31,7 @@ async def _t() -> None:
         yolo=False,
         mouse_select=True,
     )
+
     async def settle(cond, msg, tries=100):
         # Headless scrolling settles asynchronously; under coverage instrumentation
         # a fixed pause is flaky, so poll until the condition holds (or time out).
@@ -52,7 +53,9 @@ async def _t() -> None:
 
         # at the bottom: new output keeps following (tail -f)
         app.body_write("newest line")
-        await settle(lambda: body.scroll_offset.y == body.max_scroll_y, "at bottom -> keeps tailing")
+        await settle(
+            lambda: body.scroll_offset.y == body.max_scroll_y, "at bottom -> keeps tailing"
+        )
 
         # scrolled up: a new write must NOT yank the view back down
         body.scroll_to(y=10, animate=False)
