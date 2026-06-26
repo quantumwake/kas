@@ -49,6 +49,7 @@ class FakeApp(CommandHandler):
         self.model = "m"
         self.workdir = "/w"
         self.turns = 0
+        self.tok_in = self.tok_out = self.tok_cache_read = self.tok_cache_create = 0
         self.msg_q: queue.Queue = queue.Queue()
         self.exited = False
         self.writes: list[str] = []
