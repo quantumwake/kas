@@ -31,6 +31,15 @@ async def _t() -> None:
         yolo=False,
         mouse_select=True,
     )
+    async def settle(cond, msg, tries=100):
+        # Headless scrolling settles asynchronously; under coverage instrumentation
+        # a fixed pause is flaky, so poll until the condition holds (or time out).
+        for _ in range(tries):
+            if cond():
+                return
+            await pilot.pause(0.02)
+        assert cond(), msg
+
     async with app.run_test(size=(80, 24)) as pilot:
         await pilot.pause(0.3)
         body = app.query_one("#body")
@@ -39,18 +48,17 @@ async def _t() -> None:
 
         for i in range(60):  # overflow so there's somewhere to scroll
             app.body_write(f"line {i:02d} selectable output")
-        await pilot.pause(0.05)
+        await settle(lambda: body.max_scroll_y > 0, "content should overflow")
 
         # at the bottom: new output keeps following (tail -f)
         app.body_write("newest line")
-        await pilot.pause(0.02)
-        assert body.scroll_offset.y == body.max_scroll_y, "at bottom -> keeps tailing"
+        await settle(lambda: body.scroll_offset.y == body.max_scroll_y, "at bottom -> keeps tailing")
 
         # scrolled up: a new write must NOT yank the view back down
         body.scroll_to(y=10, animate=False)
-        await pilot.pause(0.05)
+        await settle(lambda: body.scroll_offset.y == 10, "scroll_to should settle")
         app.body_write("a line arrives while you're scrolled up")
-        await pilot.pause(0.05)
+        await pilot.pause(0.1)
         assert body.scroll_offset.y == 10, f"scrolled up must stay put, got {body.scroll_offset.y}"
 
         # a selection survives writes that land while scrolled up, AND is actually
@@ -59,9 +67,10 @@ async def _t() -> None:
         # was correct). Drag across rows, then check the selection bg is rendered.
         await pilot.mouse_down(body, offset=(4, 1))
         await pilot.hover(body, offset=(20, 3))
+        await settle(lambda: app.screen._selecting, "drag should start a selection")
         app.body_write("write during selection")
-        await pilot.pause(0.05)
-        assert body.scroll_offset.y == 10 and app.screen._selecting
+        await pilot.pause(0.1)
+        assert body.scroll_offset.y == 10, "write during selection must not yank the view"
         sel_bg = str(app.screen.get_component_rich_style("screen--selection").bgcolor)
         painted = 0
         for vy in range(body.size.height):
