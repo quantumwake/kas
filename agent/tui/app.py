@@ -141,6 +141,8 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
         self.fx_stats: dict = {}  # live tps/processed/total for data-driven fx
         self.tok_in = 0  # cumulative session prompt tokens (for /stats)
         self.tok_out = 0  # cumulative session generated tokens
+        self.tok_cache_read = 0  # cumulative cache-read (reused prompt) tokens
+        self.tok_cache_create = 0  # cumulative cache-creation tokens
         self.stats_on = False  # /stats panel visible
         self._io_prev: tuple | None = None  # (disk_bytes, net_bytes, t) for IO rates
         self.confirming = False

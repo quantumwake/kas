@@ -187,6 +187,8 @@ class WorkerLoops:
                     f" · subagents: {len(self.subagents)}"
                     + (f" ({running} running)" if running else "")
                 )
+            if self.tok_in or self.tok_out:  # cumulative token counter
+                line.append(f" · {self._token_summary()}", style="#c792ea")
             try:
                 self.call_from_thread(self.update_status, line)
                 if self.stats_on:

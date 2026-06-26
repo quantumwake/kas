@@ -15,3 +15,12 @@ class StatusCommand(Command):
                 style="yellow",
             )
         )
+        total = app.tok_in + app.tok_out
+        app.body_write(
+            Text(
+                f"tokens: {app.tok_in} in · {app.tok_out} out · "
+                f"{app.tok_cache_read} cached (read) · {app.tok_cache_create} cached (write) · "
+                f"{total} total",
+                style="#c792ea",
+            )
+        )

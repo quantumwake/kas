@@ -30,6 +30,19 @@ class StatsPanel:
         return f"{n:.1f}G"
 
     @staticmethod
+    def _fmt_tok(n) -> str:
+        n = int(n or 0)
+        return str(n) if n < 1000 else f"{n / 1000:.1f}k"
+
+    def _token_summary(self) -> str:
+        """Compact cumulative token counter for the status bar (cached shown only
+        when the server reports it)."""
+        s = f"tok {self._fmt_tok(self.tok_in)}↑ {self._fmt_tok(self.tok_out)}↓"
+        if self.tok_cache_read:
+            s += f" {self._fmt_tok(self.tok_cache_read)}⚡"
+        return s
+
+    @staticmethod
     def _gauge(frac: float, width: int = 6) -> Text:
         frac = max(0.0, min(1.0, frac))
         filled = int(round(frac * width))
@@ -67,7 +80,12 @@ class StatsPanel:
             t.append("tok/s ", style=L)
             t.append(f"{s['tps']}  ", style=C)
         t.append("Σ ", style=L)
-        t.append(f"{self.tok_in // 1000}k↑ {self.tok_out // 1000}k↓  ", style="#c792ea")
+        cached = f" · cached {self._fmt_tok(self.tok_cache_read)}" if self.tok_cache_read else ""
+        t.append(
+            f"in {self._fmt_tok(self.tok_in)} · out {self._fmt_tok(self.tok_out)}{cached} · "
+            f"total {self._fmt_tok(self.tok_in + self.tok_out)}  ",
+            style="#c792ea",
+        )
         # system metrics (optional psutil)
         if psutil is None:
             t.append("(uv add psutil for cpu/ram/io)", style="#555555")

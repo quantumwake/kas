@@ -115,11 +115,16 @@ class TuiIO:
         if usage is not None:
             decode_t = max(0.05, (time.time() - self._t0) - (self._ttft or 0))
             self.last_decode_tps = usage.output_tokens / decode_t
-            # cumulative session token totals, for the /stats panel
+            # cumulative session token totals, for the status bar + /stats panel
+            cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+            cache_create = getattr(usage, "cache_creation_input_tokens", 0) or 0
             self.app.tok_in += usage.input_tokens
             self.app.tok_out += usage.output_tokens
+            self.app.tok_cache_read += cache_read
+            self.app.tok_cache_create += cache_create
+            cached = f" · {cache_read} cached" if cache_read else ""
             self._write(
-                f"[{usage.input_tokens} in / {usage.output_tokens} out · "
+                f"[{usage.input_tokens} in / {usage.output_tokens} out{cached} · "
                 f"ttft {self._ttft or 0:.1f}s · {self.last_decode_tps:.1f} tok/s · "
                 f"total {time.time() - self._t0:.1f}s]",
                 "dim",
