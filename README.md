@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/kascli1.png" alt="K.A.S — Kasra's Agentic Shell, running in the terminal" width="100%" />
+  <img src="docs/kascli1.png" alt="KAS — Kasra's Agentic Shell, running in the terminal" width="100%" />
 </p>
 
 <p align="center">
@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/no%20telemetry-black?style=for-the-badge&labelColor=ff9d00" />
 </p>
 
-**K.A.S — Kasra's Agentic Shell.** Run frontier open models **locally** on the
+**KAS — Kasra's Agentic Shell.** Run frontier open models **locally** on the
 Apple-silicon GPU (via MLX), behind an **Anthropic Messages API-compatible
 server**, and drive them with an agentic TUI. Nothing leaves the machine — tool
 use, streaming, thinking, subagents, KV-cache continuation, local recall, and
@@ -53,14 +53,14 @@ Installs as the `kas` and `kas-server` commands via
 [uv](https://docs.astral.sh/uv/):
 
 ```sh
-git clone https://github.com/quantumwake/kascode && cd kascode
+git clone https://github.com/quantumwake/kas && cd kas
 ./install.sh                 # editable install to PATH  (or: make install)
 ```
 
 Or, with repo access, a one-liner (bootstraps uv + installs from git):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/quantumwake/kascode/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/quantumwake/kas/main/install.sh | sh
 ```
 
 Opt-in capabilities are **optional extras** (the core install pulls none) —

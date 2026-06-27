@@ -1,4 +1,4 @@
-"""K.A.S — BBS-style amber-on-black startup banner.
+"""KAS — Kasra's Agentic Shell — BBS-style amber-on-black startup banner.
 
 Shared by the server, the console REPL, and the TUI. Old-school terminal
 flavor: ANSI Shadow block letters, box-drawing border, amber/orange text.
@@ -7,18 +7,18 @@ flavor: ANSI Shadow block letters, box-drawing border, amber/orange text.
 import sys
 import time
 
-TAGLINE = "agentic coding shell"
+TAGLINE = "Kasra's Agentic Shell"
 SUBTAG = "local agents on your own iron"
 EST = "est. 2026"
 
-# ANSI Shadow figlet — "KASCODE" (each glyph padded to 8 cols so they align)
+# ANSI Shadow figlet — "KAS"
 ART = [
-    "██╗  ██╗ █████╗ ███████╗ ██████╗ █████╗ ██████╗ ███████╗",
-    "██║ ██╔╝██╔══██╗██╔════╝██╔════╝██╔══██╗██╔══██╗██╔════╝",
-    "█████╔╝ ███████║███████╗██║     ██║  ██║██║  ██║█████╗  ",
-    "██╔═██╗ ██╔══██║╚════██║██║     ██║  ██║██║  ██║██╔══╝  ",
-    "██║  ██╗██║  ██║███████║╚██████╗╚█████╔╝██████╔╝███████╗",
-    "╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚════╝ ╚═════╝ ╚══════╝",
+    "██╗  ██╗ █████╗ ███████╗",
+    "██║ ██╔╝██╔══██╗██╔════╝",
+    "█████╔╝ ███████║███████╗",
+    "██╔═██╗ ██╔══██║╚════██║",
+    "██║  ██╗██║  ██║███████║",
+    "╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝",
 ]
 
 # 256-color amber/orange on black
@@ -46,7 +46,7 @@ def _box_lines(model: str | None, extra: str | None) -> list[tuple[str, str]]:
         pad = inner - len(a) - 3
         rows.append(("║  " + a + " " * max(0, pad) + " ║", "art"))
     rows.append(("║" + " " * inner + "║", "rule"))
-    title = f"kascode  ·  {TAGLINE}"
+    title = f"kas  ·  {TAGLINE}"
     rows.append(("║  " + title.ljust(inner - 3) + " ║", "title"))
     rows.append(("║  " + f"{SUBTAG}  ·  {EST}".ljust(inner - 3) + " ║", "sub"))
     if model:
@@ -57,7 +57,7 @@ def _box_lines(model: str | None, extra: str | None) -> list[tuple[str, str]]:
     return rows
 
 
-def set_title(text: str = "kascode · agentic coding shell") -> None:
+def set_title(text: str = "kas · Kasra's Agentic Shell") -> None:
     if sys.stdout.isatty():
         sys.stdout.write(f"\033]0;{text}\007")
         sys.stdout.flush()

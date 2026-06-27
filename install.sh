@@ -2,7 +2,7 @@
 # Install kas (and kas-server) as global commands via uv.
 #
 #   local clone:  ./install.sh
-#   remote:       curl -fsSL https://raw.githubusercontent.com/quantumwake/kascode/main/install.sh | sh
+#   remote:       curl -fsSL https://raw.githubusercontent.com/quantumwake/kas/main/install.sh | sh
 #
 # uv provides the isolated Python env AND a pinned interpreter, so the install
 # resolves identically everywhere. The agent (kas) is cross-platform; the MLX
@@ -11,7 +11,7 @@
 # Apple packages — and you point it at a remote server with --base-url.
 set -eu
 
-REPO="git+https://github.com/quantumwake/kascode"   # https: works for public + gh-authed private
+REPO="git+https://github.com/quantumwake/kas"   # https: works for public + gh-authed private
 PYVER="3.11"
 
 say() { printf '%s\n' "$*"; }
