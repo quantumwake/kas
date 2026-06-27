@@ -274,15 +274,15 @@ def capability_install_command(
     # a marker so a shared pyproject/tool stays cross-platform.
     metal_only = cap["gpus"] == ["metal"]
     marker = "; sys_platform == 'darwin' and platform_machine == 'arm64'" if metal_only else ""
-    specs = [p + marker for p in cap["pkgs"]]
 
     if _in_uv_tool():  # `uv tool install --with` records the dep on the tool receipt
-        target = _kas_repo_root()
+        target = _kas_repo_root()  # bundle into the install so a reinstall keeps it
         src = ["--editable", str(target)] if target else ["kas"]
-        withs = [x for s in specs for x in ("--with", s)]
+        # bare names (no marker): applies() already confirmed this machine
+        withs = [x for p in cap["pkgs"] for x in ("--with", p)]
         return ["uv", "tool", "install", "--force", *src, *withs], note + " (persists with kas)"
     if _editable_checkout():  # dev checkout via `uv run` -> add to pyproject so syncs keep it
-        return ["uv", "add", *specs], note + " (added to pyproject — persists)"
+        return ["uv", "add", *[p + marker for p in cap["pkgs"]]], note + " (added to pyproject)"
     if shutil.which("uv"):
         return ["uv", "pip", "install", "--python", sys.executable, *cap["pkgs"]], note
     return [sys.executable, "-m", "pip", "install", *cap["pkgs"]], note

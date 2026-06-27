@@ -37,16 +37,31 @@ fi
 say "  ensuring Python $PYVER (uv-managed)..."
 uv python install "$PYVER" >/dev/null 2>&1 || true
 
+# --- optional capabilities -------------------------------------------------
+# kas runs as a uv tool, and `uv tool install --force` reinstalls core-only —
+# so installing a feature's package on-demand (`/listen install`) gets WIPED on
+# the next reinstall. To make features persist we bundle their packages into the
+# install with `--with`. On Apple Silicon we include the common ones by default;
+# override with KAS_WITH (e.g. KAS_WITH="mlx-whisper mlx-vlm mlx-audio mflux" to
+# add the heavy vision/tts/image-gen runtimes, or KAS_WITH="" for none).
+case "$(uname -s)/$(uname -m)" in
+    Darwin/arm64) WITH_PKGS="${KAS_WITH-mlx-whisper sqlite-vec model2vec pillow ddgs trafilatura}" ;;
+    *)            WITH_PKGS="${KAS_WITH-sqlite-vec model2vec pillow ddgs trafilatura}" ;;
+esac
+WITH_FLAGS=""
+for p in $WITH_PKGS; do WITH_FLAGS="$WITH_FLAGS --with $p"; done
+[ -n "$WITH_PKGS" ] && say "  bundling features: $WITH_PKGS"
+
 # --- install --------------------------------------------------------------
 SELF="$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd || true)"
 # --refresh: bypass any stale git/resolution entries a prior failed run left
 # in uv's cache (the classic "fixed the source but install still fails" case).
 if [ -n "${SELF:-}" ] && [ -f "${SELF}/pyproject.toml" ]; then
     say "installing kas from local checkout (${SELF}), editable, python ${PYVER}..."
-    uv tool install --force --refresh --python "$PYVER" --editable "$SELF"
+    uv tool install --force --refresh --python "$PYVER" $WITH_FLAGS --editable "$SELF"
 else
     say "installing kas from ${REPO}, python ${PYVER}..."
-    uv tool install --force --refresh --python "$PYVER" "$REPO"
+    uv tool install --force --refresh --python "$PYVER" $WITH_FLAGS "$REPO"
 fi
 uv tool update-shell 2>/dev/null || true
 

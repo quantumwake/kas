@@ -15,7 +15,8 @@ dependencies = [
     "anthropic>=0.109",
     "huggingface-hub",
     "textual>=8.2.7",
-    "psutil>=5.9",        # cpu/ram/disk/net for the /stats panel (core)
+    "psutil>=5.9", # cpu/ram/disk/net for the /stats panel (core)
+    "mlx-whisper>=0.4.3 ; platform_machine == 'arm64' and sys_platform == 'darwin'",
 ]
 
 # Opt-in tool backends. Each tool degrades gracefully when its package is
