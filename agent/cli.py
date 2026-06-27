@@ -383,10 +383,14 @@ def _run_plain_repl(client, io, runner, store, messages: list, workdir, resume_h
 
 
 def main() -> None:
-    # subcommands: `kas serve ...` and `kas agent ...` (bare `kas` = agent)
+    # subcommands: `kas serve ...`, `kas doctor ...`, `kas agent ...` (bare `kas` = agent)
     if len(sys.argv) > 1 and sys.argv[1] == "serve":
         serve_main(sys.argv[2:])
         return
+    if len(sys.argv) > 1 and sys.argv[1] == "doctor":
+        from scripts.doctor import main as doctor_main
+
+        sys.exit(doctor_main(sys.argv[2:]))
     if len(sys.argv) > 1 and sys.argv[1] == "agent":
         del sys.argv[1]  # strip so the agent parser sees the rest
 

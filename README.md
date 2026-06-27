@@ -42,6 +42,11 @@ weights plus KV cache, so **32–64 GB** is the comfortable floor; smaller 4-bit
 models run on 24 GB. The **agent alone** (`kas`, no local server) is portable
 and has no GPU/RAM needs — point it at a remote `--base-url` (see Platforms).
 
+**On any host, run `kas doctor`** — it detects your OS / CPU arch / GPU vendor
+and peripherals and reports exactly which libraries each optional feature needs,
+with `kas doctor --install` to set them up. See the support matrix at the bottom
+for which combinations are tested.
+
 ## Install
 
 Installs as the `kas` and `kas-server` commands via
@@ -58,14 +63,24 @@ Or, with repo access, a one-liner (bootstraps uv + installs from git):
 curl -fsSL https://raw.githubusercontent.com/quantumwake/kascode/main/install.sh | sh
 ```
 
-Opt-in tool backends are **optional extras** (the core install pulls neither):
+Opt-in capabilities are **optional extras** (the core install pulls none) —
+let `kas doctor --install` pick the right ones for your platform, or add by hand:
 
 ```sh
-uv add ddgs trafilatura     # web_search / web_fetch   (--net)   ·  extra: web
-uv add mflux                # generate_image (FLUX/MLX) (--art)  ·  extra: art
+uv add 'kas[web]'      # web_search / web_fetch          (--net)
+uv add 'kas[art]'      # generate_image (FLUX/MLX)        (--art)
+uv add 'kas[memory]'   # semantic recall (sqlite-vec)     (/memory)
+uv add 'kas[vision]'   # image → text (mlx-vlm)           (drag-drop / /image)
+uv add 'kas[voice]'    # voice → text (mlx-whisper)       (/listen; also needs ffmpeg)
+uv add 'kas[tts]'      # neural text → voice (mlx-audio)  (/say; native say/espeak work without it)
+uv add 'kas[preview]'  # inline image preview (Pillow)    (/show)
+uv add 'kas[all]'      # everything applicable to this platform
 ```
 
-Each tool degrades gracefully with an install hint if its package is absent.
+Some need a native tool too: **ffmpeg** (voice capture), **pngpaste** (macOS
+clipboard images), **espeak-ng** (Linux TTS). `kas doctor` lists these and the
+exact `brew`/`apt`/`dnf` command. Every feature degrades gracefully with an
+install hint if its package is absent.
 
 ## Quick start
 
@@ -194,8 +209,13 @@ Default: `mlx-community/Qwen3.6-27B-4bit`. Switch live with `/model`, or
   Qwen3.6-27B-4bit              ~15 GB   default · dense
   Qwen3.6-35B-A3B-4bit          ~15 GB   MoE (~3B active) · ~4x faster decode
   Qwen3-Next-80B-A3B-4bit       ~42 GB   bigger, same A3B speed class
-  gpt-oss-120b (MXFP4)          ~60 GB   strong; needs a harmony dialect (todo)
+  gpt-oss-120b (MXFP4)          ~60 GB   strong; harmony dialect supported
 ```
+
+Tool calling is parsed per model family (qwen / llama / mistral / harmony /
+hermes / deepseek / kimi / gemma) — see the **Models × dialect** table below.
+The `/model` picker lists only chat-capable models (it classifies each cached
+model by modality, hiding embedding/Whisper/diffusion weights).
 
 ## Configuration (env)
 
@@ -208,13 +228,18 @@ Default: `mlx-community/Qwen3.6-27B-4bit`. Switch live with `/model`, or
   KAS_COMPACT_TPS    compact below tok/s    (8.0 · 0 disables)
   KAS_KV_BITS        KV quantization        (8 · "" disables)
   KAS_KV_PERSIST     warm-resume KV to disk (on · =0 disables)
-  KAS_RAG            =0 disables recall      (on by default)
+  KAS_MEMORY         =0 disables recall      (on by default)
   KAS_NET            =1 enables web tools    (off · kas is offline)
   KAS_ART            =1 enables generate_image (off · needs mflux)
   KAS_SANDBOX        =1 requests sandbox mode — gated (see --sandbox); off
   KAS_SUBAGENT_ROUNDS  default subagent round budget    (25 · cap 60)
   KAS_ART_MODEL      mflux model for --art  (flux2-klein-4b)
   KAS_ART_STYLE      style preamble prepended to every image prompt
+  KAS_STT_MODEL      whisper model for /listen (mlx-community/whisper-large-v3-turbo)
+  KAS_STT_DEVICE     mic input device for ffmpeg capture (":0" macOS · "default" linux)
+  KAS_TTS            =mlx uses neural TTS (mlx-audio) instead of native say/espeak
+  KAS_TTS_VOICE      native voice name for /say (e.g. a macOS `say` voice)
+  KAS_IMAGE_INLINE   =1 base64-embed attached images (only for a REMOTE server)
 ```
 
 ## Make targets
@@ -224,18 +249,67 @@ make start [MODEL=… PORT=…]   download (with progress) + boot server
 make stop / restart / status / logs / perf
 make test                     parser · protocol · continuation · cache · tools · compaction (no model)
 make install                  install kas + kas-server to PATH
+make doctor [ARGS=--install]  platform/GPU capability report + guided install
 make download MODEL=…         fetch weights only
 ```
 
-## Platforms
+## Platforms & support matrix
+
+Run `kas doctor` on any machine for a live, platform-specific report of what's
+installed and what each capability needs (`kas doctor --install` does it guided).
 
 - **Agent (`kas`)** — portable. It only speaks HTTP to an Anthropic-compatible
   server, so it runs anywhere Python does (macOS, Linux, Windows).
-- **Server (`kas-server`)** — **Apple-Silicon only today** (MLX = Apple GPU).
-- **CUDA / ROCm / Windows** — works *now* by pointing the agent at any other
-  Anthropic-compatible endpoint (vLLM, TGI, LM Studio, …):
-  `kas --base-url http://your-server:port`. A native non-MLX `kas-server`
-  backend (CUDA/ROCm) is a **TODO — untested, pull requests welcome.**
+- **Server (`kas-server`)** — **MLX** (Apple GPU) is the primary, heavily-used
+  backend; a **llama.cpp/GGUF** backend (CPU + CUDA/ROCm/Metal) is implemented
+  for non-Apple hardware but only smoke-tested on CPU so far.
+- You can always point the agent at any other Anthropic-compatible endpoint
+  (vLLM, TGI, LM Studio, …): `kas --base-url http://host:port`.
+
+**Inference backend × platform** — ✅ tested · 🟡 implemented, lightly/untested · ⬜ planned
+
+| Platform / accelerator | Backend | Status |
+|---|---|---|
+| macOS · Apple Silicon (Metal) | `mlx` | ✅ primary, daily use |
+| Linux/macOS · CPU | `llama_cpp` (GGUF) | 🟡 CI smoke only (Qwen2.5-0.5B GGUF) |
+| Linux · NVIDIA (CUDA) | `llama_cpp` (CUDA build) | 🟡 untested — **PRs welcome** |
+| Linux · AMD (ROCm) | `llama_cpp` (ROCm build) | 🟡 untested — **PRs welcome** |
+| Windows | agent only → remote `--base-url` | 🟡 untested — **PRs welcome** |
+| any · vLLM adapter | — | ⬜ planned (unlocks 100B+ on CUDA) |
+
+**Models × tool-call dialect** (the agent needs the model's tool format parsed):
+
+| Model family | Dialect | Status |
+|---|---|---|
+| Qwen3-Coder / Qwen3.6 | `qwen-xml` | ✅ live |
+| Llama 3.1 / 3.2 / 3.3 | `llama-json` | ✅ live (Llama-3.2-3B) |
+| Mistral / Mixtral | `mistral` | ✅ live (Mistral-7B-v0.3) |
+| gpt-oss (harmony) | `harmony` | ✅ live (gpt-oss-20b) |
+| Gemma 3/4 | `gemma` | ✅ live |
+| Qwen2.5 / Qwen3-Next / Hermes | `hermes-json` | 🟡 unit-tested |
+| DeepSeek V3 / R1 | `deepseek` | 🟡 unit-tested |
+| Kimi-K2 | `kimi-k2` | 🟡 unit-tested |
+
+Auto-detected from the chat template + model id; override per model in
+`~/.kascode/dialects.json`.
+
+**Feature × platform** (optional capabilities; the agent degrades gracefully):
+
+| Feature | Command | Apple Silicon | Linux/Windows |
+|---|---|---|---|
+| Image → text (VLM) | drag-drop, `/image` | 🟡 mlx-vlm (needs live validation) | ⬜ |
+| Voice → text | `/listen` | 🟡 mlx-whisper + ffmpeg | ⬜ |
+| Text → image | `generate_image` | ✅ mflux (FLUX) | ⬜ |
+| Image preview | `/show` | ✅ Pillow | ✅ Pillow |
+| Text → voice | `/say` | ✅ native `say` · 🟡 mlx-audio | ✅ espeak-ng · ⬜ neural |
+| Semantic recall | `/memory` | ✅ sqlite-vec | ✅ sqlite-vec |
+| Web search/fetch | `--net` | ✅ | ✅ |
+
+**Help us fill the grid.** The 🟡/⬜ cells are limited by the hardware we can
+test on (this is Apple-Silicon-developed). If you run kas on NVIDIA, AMD, or a
+Linux/Windows host — or live-validate a 🟡 cell — please open a PR with fixes or
+a note confirming a combination works (model + platform + what you ran).
+`kas doctor --json` output is a great thing to paste.
 
 ## Layout
 

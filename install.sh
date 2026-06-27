@@ -54,12 +54,20 @@ say ""
 if command -v kas >/dev/null 2>&1; then
     say "OK: installed -> $(command -v kas) (+ kas-server)"
     say ""
-    say "  kas serve        # start the inference server (daemon)"
-    say "  kas              # launch the agent"
+    # Platform-aware capability check: detect GPU/peripherals and report what each
+    # optional feature (vision, voice, TTS, image-gen, memory) needs on THIS host.
+    say "checking optional capabilities for your platform..."
+    say ""
+    kas doctor 2>/dev/null || say "  (run \`kas doctor\` anytime for the capability report)"
+    say ""
+    say "  kas doctor --install   # guided install of the missing pieces above"
+    say "  kas serve              # start the inference server (daemon)"
+    say "  kas                    # launch the agent"
     say "  kas --help"
 else
     say "OK: installed. Add uv's bin to PATH, then restart your shell:"
     say "    uv tool update-shell"
+    say "  then: kas doctor   # platform capability report + guided install"
 fi
 say ""
 say "(if a stale uv cache ever causes a repeat failure: uv cache clean && re-run)"

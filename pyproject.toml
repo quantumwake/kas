@@ -32,7 +32,13 @@ art = ["mflux>=0.9; sys_platform == 'darwin' and platform_machine == 'arm64'"]
 memory = ["sqlite-vec>=0.1", "model2vec>=0.3"]
 memory-mlx = ["mlx-embeddings>=0.0.1; sys_platform == 'darwin' and platform_machine == 'arm64'"]
 memory-gguf = ["llama-cpp-python>=0.2"]
-all = ["kas[web,art,memory]"]
+# Multimodal (Apple-Silicon-only runtimes; the agent degrades gracefully without
+# them, and `kas doctor` installs the right ones for the detected platform).
+vision = ["mlx-vlm>=0.1; sys_platform == 'darwin' and platform_machine == 'arm64'"]  # image->text
+voice = ["mlx-whisper>=0.4; sys_platform == 'darwin' and platform_machine == 'arm64'"]  # /listen
+tts = ["mlx-audio>=0.2; sys_platform == 'darwin' and platform_machine == 'arm64'"]  # /say (neural)
+preview = ["pillow>=10.0"]  # inline image preview (/show); cross-platform
+all = ["kas[web,art,memory,vision,voice,tts,preview]"]
 # Dev/CI toolchain (linting, types, tests). Pinned so local == CI.
 dev = [
     "ruff==0.12.1",
