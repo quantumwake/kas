@@ -48,6 +48,18 @@ def _loudness_to_level(lufs: float) -> float:
     return max(0.0, min(1.0, (lufs + 50.0) / 50.0))
 
 
+def _open_debug():
+    """Append-mode handle to ~/.kascode/vad-debug.log, or None if it can't open."""
+    try:
+        path = pathlib.Path.home() / ".kascode" / "vad-debug.log"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        f = open(path, "a")
+        f.write("\n--- record start ---\n")
+        return f
+    except OSError:
+        return None
+
+
 def silence_hold_secs(spoke_secs: float = 0.0) -> float:
     """How long a pause AFTER speech must last to end the turn (the VAD endpoint).
 
@@ -110,6 +122,10 @@ def record(
     speech_thresh = float(os.environ.get("KAS_STT_VAD_THRESH", "0.12"))
     import time as _time
 
+    # KAS_STT_DEBUG=1 -> append VAD telemetry to ~/.kascode/vad-debug.log so a
+    # stuck endpoint (e.g. the agent's TTS bleeding into the mic) is diagnosable.
+    dbg = _open_debug() if os.environ.get("KAS_STT_DEBUG") else None
+
     spoke = False
     cancelled = False
     no_speech = False
@@ -150,12 +166,17 @@ def record(
             if not vad:
                 continue
             now = _time.monotonic()
+            hold = silence_hold_secs(now - (speech_start or now))
+            if dbg:
+                dbg.write(f"{now - start:6.2f} lvl={level:.2f} spoke={spoke} "
+                          f"sil={now - last_loud:.2f}/{hold}\n")
+                dbg.flush()
             if level >= speech_thresh:
                 if speech_start is None:
                     speech_start = now
                 spoke = True
                 last_loud = now
-            elif spoke and now - last_loud >= silence_hold_secs(now - (speech_start or now)):
+            elif spoke and now - last_loud >= hold:
                 _stop()  # end of turn — graceful finalize
             elif not spoke and silence_limit and now - start >= silence_limit:
                 no_speech = True  # nobody spoke within the window
@@ -166,6 +187,9 @@ def record(
         deadline_killer.cancel()
         if cue is not None:
             cue.cancel()
+        if dbg:
+            dbg.write(f"end: spoke={spoke} cancelled={cancelled} no_speech={no_speech}\n")
+            dbg.close()
 
     if cancelled:
         return None, "cancelled"

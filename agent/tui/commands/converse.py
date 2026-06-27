@@ -116,12 +116,22 @@ class ConverseCommand(Command):
         return app.converse
 
     def _await_turn(self, app) -> None:
-        """After submitting, wait for the turn to start, finish, and stop speaking."""
+        """After submitting, wait for the turn to START, finish, and stop speaking
+        — so we never listen on top of the agent answering/speaking the previous
+        turn (which would bleed its voice into the next capture).
+
+        The message is queued, so it WILL be picked up; we wait for busy to go
+        True without a short timeout (only Escape/stop bails). A generous cap
+        guards against a wedged agent loop. We also accept a turn that finished so
+        fast we missed the busy flag (turns counter moved)."""
+        turns0 = getattr(app, "turns", 0)
         t0 = time.monotonic()
-        while not app.busy and time.monotonic() - t0 < 5:
-            if not app.converse:
-                return
-            time.sleep(0.05)
+        while not app.busy:
+            if not app.converse or getattr(app, "turns", 0) != turns0:
+                return  # stopped, or the turn already came and went
+            if time.monotonic() - t0 > 120:
+                return  # agent loop looks wedged — don't hang forever
+            time.sleep(0.03)
         while app.busy:
             if not app.converse:
                 return
