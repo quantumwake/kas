@@ -64,9 +64,21 @@ app.busy = False
 assert c._await_idle(app) is True
 print("_await_idle: OK")
 
-# the voice directive enforces brevity + the stop phrases are sane.
-assert "stop listening" in STOP_PHRASES and "stop" in STOP_PHRASES
+# the voice directive enforces brevity + the stop phrases cover the asks.
+for p in ("stop", "stop listening", "cancel", "exit", "pause", "quit"):
+    assert p in STOP_PHRASES, p
 assert "voice" in VOICE_DIRECTIVE.lower() and "sentence" in VOICE_DIRECTIVE.lower()
 print("directive + stop phrases: OK")
+
+# Escape (action_interrupt) ends a running conversation.
+from agent.tui.app import AgentApp  # noqa: E402
+
+esc = types.SimpleNamespace(
+    converse=True, _fx_browsing=False, screen_stack=[1], busy=False,
+    body_write=lambda *a, **k: None,
+)
+AgentApp.action_interrupt(esc)
+assert esc.converse is False, "Escape should stop /converse"
+print("escape stops converse: OK")
 
 print("all converse tests passed")

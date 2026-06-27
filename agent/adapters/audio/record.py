@@ -48,12 +48,17 @@ def _loudness_to_level(lufs: float) -> float:
     return max(0.0, min(1.0, (lufs + 50.0) / 50.0))
 
 
+NO_SPEECH = "no_speech"  # err sentinel: VAD heard nothing within silence_limit
+
+
 def record(
     out_path: str | pathlib.Path,
     seconds: int = 5,
     on_ready=None,
     on_level=None,
     vad: bool = False,
+    silence_limit: float | None = None,
+    should_stop=None,
 ) -> tuple[pathlib.Path | None, str]:
     """Capture the mic to `out_path`. Returns (path, "") or (None, error).
 
@@ -62,9 +67,11 @@ def record(
     seconds+warmup long so the lead-in doesn't eat into the user's time.
 
     With vad=True, `seconds` is the MAX; the turn ends ~KAS_STT_SILENCE seconds
-    after speech stops (energy VAD off the loudness meter). We stop ffmpeg by
-    writing 'q' to its stdin so it finalizes a valid WAV (a kill would corrupt
-    the header)."""
+    after speech stops (energy VAD off the loudness meter). `silence_limit` (s)
+    stops with err=NO_SPEECH if NO speech is heard in that window (caller can end
+    the conversation). `should_stop()` is polled to cancel promptly (e.g. Escape).
+    We stop ffmpeg with 'q' on stdin so it finalizes a valid WAV (a kill would
+    corrupt the header)."""
     if shutil.which("ffmpeg") is None:
         return None, "recording needs ffmpeg (brew install ffmpeg / apt install ffmpeg)"
     warmup = float(os.environ.get("KAS_STT_WARMUP", "0.3"))
@@ -92,8 +99,11 @@ def record(
     speech_thresh = float(os.environ.get("KAS_STT_VAD_THRESH", "0.12"))
     import time as _time
 
-    spoke = [False]
-    last_loud = [_time.monotonic() + warmup]  # don't count the warmup as silence
+    spoke = False
+    cancelled = False
+    no_speech = False
+    start = _time.monotonic() + warmup  # don't count the warmup lead-in
+    last_loud = start
 
     def _stop() -> None:
         try:
@@ -112,6 +122,10 @@ def record(
             tail_lines.append(line)
             if len(tail_lines) > 40:
                 tail_lines.pop(0)
+            if should_stop is not None and should_stop():  # external cancel (e.g. Escape)
+                cancelled = True
+                _stop()
+                break
             m = _M_RE.search(line)
             if not m:
                 continue
@@ -121,19 +135,28 @@ def record(
                     on_level(level)
                 except Exception:
                     pass
-            if vad:
-                now = _time.monotonic()
-                if level >= speech_thresh:
-                    spoke[0] = True
-                    last_loud[0] = now
-                elif spoke[0] and now - last_loud[0] >= silence_hold:
-                    _stop()  # end of turn — graceful finalize
+            if not vad:
+                continue
+            now = _time.monotonic()
+            if level >= speech_thresh:
+                spoke = True
+                last_loud = now
+            elif spoke and now - last_loud >= silence_hold:
+                _stop()  # end of turn — graceful finalize
+            elif not spoke and silence_limit and now - start >= silence_limit:
+                no_speech = True  # nobody spoke within the window
+                _stop()
+                break
         proc.wait()
     finally:
         deadline_killer.cancel()
         if cue is not None:
             cue.cancel()
 
+    if cancelled:
+        return None, "cancelled"
+    if no_speech:
+        return None, NO_SPEECH
     out = pathlib.Path(out_path)
     # 'q' makes ffmpeg exit 255; accept it as long as we got a file.
     if not out.exists() or out.stat().st_size < 200:

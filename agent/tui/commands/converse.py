@@ -3,10 +3,11 @@
 Loop: listen (VAD ends the turn when you stop talking) → transcribe → show it →
 run the normal agent turn → speak the reply → listen again. Strictly one party
 at a time: it won't listen while thinking or speaking, so you don't trip over
-each other. Say "stop listening" or run /converse again to end.
+each other.
 
-Replies are kept short + spoken (a voice directive on the first turn); full
-barge-in / interruption is a later phase.
+Ends on any of: a spoken stop word (stop/cancel/exit/pause/…), Escape, /converse
+again, or ~15s of nobody talking. Replies are kept short + spoken (a voice
+directive on the first turn); full barge-in / interruption is a later phase.
 """
 
 import threading
@@ -15,7 +16,7 @@ import time
 from rich.text import Text
 
 from ...adapters.audio.stt import preload, whisper_available
-from ._voice import listen_once, note
+from ._voice import NO_SPEECH, listen_once, note
 from .base import Command
 
 VOICE_DIRECTIVE = (
@@ -23,7 +24,12 @@ VOICE_DIRECTIVE = (
     "spoken sentences — no markdown, no code blocks, no lists, just talk. Do any "
     "needed tool work quietly and report the result in one sentence.]"
 )
-STOP_PHRASES = {"stop", "stop listening", "exit voice", "end conversation", "goodbye"}
+STOP_PHRASES = {
+    "stop", "stop listening", "cancel", "exit", "exit voice", "pause", "quit",
+    "end conversation", "goodbye",
+}
+MAX_TURN_SECS = 30  # a single spoken turn can't exceed this
+NO_SPEECH_SECS = 15.0  # silence this long with nobody talking ends the conversation
 
 
 class ConverseCommand(Command):
@@ -44,8 +50,11 @@ class ConverseCommand(Command):
         app.converse = True
         app.tts_on = True  # speak replies
         app.body_write(
-            Text("🎙 voice conversation ON — just talk. Say 'stop listening' or /converse to end.",
-                 style="cyan")
+            Text(
+                "🎙 voice conversation ON — just talk. Ends on 'stop'/'cancel', "
+                "Escape, /converse, or 15s of silence.",
+                style="cyan",
+            )
         )
         threading.Thread(target=lambda: self._loop(app), daemon=True).start()
 
@@ -53,22 +62,33 @@ class ConverseCommand(Command):
 
     def _loop(self, app) -> None:
         threading.Thread(target=preload, daemon=True).start()  # warm the model now
-        max_secs = 30
         first = True
+        reason = "/converse"
         try:
             while getattr(app, "converse", False):
                 if not self._await_idle(app):
+                    reason = "stopped"
                     break
-                text, err = listen_once(app, max_secs, vad=True)
+                text, err = listen_once(
+                    app, MAX_TURN_SECS, vad=True,
+                    silence_limit=NO_SPEECH_SECS, should_stop=lambda: not app.converse,
+                )
                 if not app.converse:
+                    reason = "stopped"
                     break
-                if err:
-                    note(app, err, "red")
-                    break  # a mic/record error stops the loop (not transient)
-                text = (text or "").strip()
+                if err == NO_SPEECH:
+                    reason = f"{int(NO_SPEECH_SECS)}s of silence"
+                    break
+                if err:  # "cancelled" or a real mic error
+                    reason = "mic error" if err != "cancelled" else "stopped"
+                    if err not in ("cancelled",):
+                        note(app, err, "red")
+                    break
+                text = text.strip()
                 if len(text) < 2:
-                    continue  # silence — listen again
+                    continue  # heard a blip, nothing intelligible — keep listening
                 if text.lower().strip(" .!?") in STOP_PHRASES:
+                    reason = f"heard '{text.strip()}'"
                     break
                 note(app, f"🗣  {text}", "bold #3fb950")
                 app.msg_q.put(text + (VOICE_DIRECTIVE if first else ""))
@@ -78,7 +98,7 @@ class ConverseCommand(Command):
             app.converse = False
             app.tts_on = False
             app.voice_indicator(None)
-            note(app, "🛑 voice conversation ended", "yellow")
+            note(app, f"🛑 voice conversation ended ({reason})", "yellow")
 
     # -- turn coordination (no tripping over each other) ---------------------
 

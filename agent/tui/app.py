@@ -363,6 +363,10 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
         if self._fx_browsing:  # Esc cancels fx browse before anything else
             self.fx_browse_end(keep=False)
             return
+        if self.converse:  # Esc ends a voice conversation (stops listening promptly)
+            self.converse = False
+            self.body_write(Text("[ending voice conversation…]", style="yellow"))
+            return
         # Escape is a priority binding, so it fires app-wide — even over a modal,
         # whose own escape→dismiss would otherwise be shadowed. So if a modal is
         # open (subagent view, model picker), close THAT first instead of

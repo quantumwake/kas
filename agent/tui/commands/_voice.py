@@ -8,8 +8,10 @@ import tempfile
 
 from rich.text import Text
 
-from ...adapters.audio.record import record
+from ...adapters.audio.record import NO_SPEECH, record
 from ...adapters.audio.stt import transcribe
+
+__all__ = ["NO_SPEECH", "listen_once", "note"]
 
 
 def note(app, msg: str, style: str) -> None:
@@ -23,10 +25,12 @@ def note(app, msg: str, style: str) -> None:
             pass
 
 
-def listen_once(app, max_secs: int, vad: bool = False) -> tuple[str, str]:
+def listen_once(
+    app, max_secs: int, vad: bool = False, silence_limit=None, should_stop=None
+) -> tuple[str, str]:
     """Record from the mic then transcribe. Returns (text, error) — error is ""
-    on success. vad=True ends the turn on silence (conversation); vad=False
-    records for max_secs (one-shot /listen)."""
+    on success, or a sentinel: NO_SPEECH (nobody spoke within silence_limit) or
+    "cancelled" (should_stop fired). vad=True ends the turn on silence."""
     wav = pathlib.Path(tempfile.mktemp(suffix=".wav"))
     app.voice_indicator("listening", conn="🎙 warming mic", work="…")
 
@@ -36,7 +40,10 @@ def listen_once(app, max_secs: int, vad: bool = False) -> tuple[str, str]:
     def on_level(level: float) -> None:  # drives the audio-reactive fx meter
         app.voice_level = level
 
-    path, err = record(wav, max_secs, on_ready=cue, on_level=on_level, vad=vad)
+    path, err = record(
+        wav, max_secs, on_ready=cue, on_level=on_level, vad=vad,
+        silence_limit=silence_limit, should_stop=should_stop,
+    )
     if err:
         app.voice_indicator(None)
         return "", err
