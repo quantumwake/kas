@@ -70,7 +70,7 @@ def check_tool_calling() -> tuple[bool, str]:
             "stream": True,
             "tool_choice": {"type": "any"},
             "tools": tools,
-            "messages": [{"role": "user", "content": "Weather in Paris? Use the get_weather tool."}],
+            "messages": [{"role": "user", "content": "Weather in Paris? Use get_weather."}],
         }
     ):
         t = ev.get("type")
