@@ -9,6 +9,7 @@ working unchanged.
 from .dialects import GemmaDialect, QwenDialect, _coerce, detect_dialect
 from .gemma_args import _parse_value, parse_tool_call_body, render_tool_response
 from .parser import StreamParser, _safe_len
+from .recover import recover_tool_call
 from .standard_dialects import (
     DeepSeekDialect,
     HarmonyDialect,
@@ -48,6 +49,7 @@ __all__ = [
     "parse_tool_call_body",
     "render_tool_response",
     "StreamParser",
+    "recover_tool_call",
     "_safe_len",
     "_parse_value",
     "_coerce",

@@ -15,9 +15,13 @@ dependencies = [
     "anthropic>=0.109",
     "huggingface-hub",
     "textual>=8.2.7",
-    "psutil>=5.9", # cpu/ram/disk/net for the /stats panel (core)
-    "mlx-whisper>=0.4.3 ; platform_machine == 'arm64' and sys_platform == 'darwin'",
+    "psutil>=5.9",        # cpu/ram/disk/net for the /stats panel (core)
 ]
+# NOTE: voice (mlx-whisper), vision (mlx-vlm), etc. are OPTIONAL extras below —
+# NOT core deps. They pull heavy stacks (numba/scipy/tiktoken) that perturb the
+# clean env the platform-detection tests assume, and most installs don't want
+# them. Persistence for a uv-tool install is handled by install.sh bundling the
+# wanted ones with `--with` (KAS_WITH=…), so they survive `make install`.
 
 # Opt-in tool backends. Each tool degrades gracefully when its package is
 # absent (the tool returns an install hint), so these stay out of the core

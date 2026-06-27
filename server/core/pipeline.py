@@ -177,6 +177,20 @@ def run(
 
     yield from to_events(parser.flush())
 
+    # Fallback chain: the model called a tool but in a format this dialect doesn't
+    # parse (e.g. Qwen3.6 emitting Claude/JSON), so it leaked as text. Recover it
+    # from the assembled text and surface a real tool_use.
+    if not parser.tool_calls and req.tools:
+        from ..prompting.recover import recover_tool_call
+
+        leaked = "\n".join(b["text"] for b in blocks if b["type"] == "text")
+        recovered = recover_tool_call(leaked, schemas)
+        if recovered is not None:
+            log.info("recovered tool call %r from non-dialect format", recovered["name"])
+            parser.tool_calls.append(recovered)
+            blocks.append({"type": "tool_use", **recovered})
+            yield {"kind": "tool_use", **recovered}
+
     if parser.tool_calls and stop_reason == "end_turn":
         stop_reason = "tool_use"
 
