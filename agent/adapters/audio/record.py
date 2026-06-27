@@ -30,7 +30,10 @@ def record_command(
     """ffmpeg argv for a `seconds`-long 16 kHz mono capture, or None if this OS
     has no known input format. `meter` adds ebur128 loudness logging to stderr."""
     sysname = platform.system()
-    af = ["-af", "ebur128=metadata=1"] if meter else []
+    # plain `ebur128` prints per-frame `M: <LUFS>` loudness to stderr (~10/s);
+    # `metadata=1` would SUPPRESS those and print only a final Summary — which
+    # silently breaks VAD (no levels parsed -> never detects end-of-speech).
+    af = ["-af", "ebur128"] if meter else []
     # Force pcm_s16le so Python's `wave` module can always decode it (ffmpeg
     # otherwise sometimes writes WAVE_FORMAT_EXTENSIBLE, which `wave` rejects).
     tail = [*af, "-t", str(seconds), "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", str(out_path)]

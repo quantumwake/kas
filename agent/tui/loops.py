@@ -16,15 +16,21 @@ from agent import main as core
 class WorkerLoops:
     @staticmethod
     def _reply_text(messages: list) -> str:
-        """The plain text of the last assistant message (for /say)."""
+        """The plain TEXT of the last assistant message (for /say). Content blocks
+        may be dicts OR objects (SDK/pydantic ThinkingBlock/TextBlock), so read
+        type/text accommodatingly and skip non-text (thinking/tool_use)."""
+
+        def field(b, name):
+            return b.get(name) if isinstance(b, dict) else getattr(b, name, None)
+
         for m in reversed(messages):
-            if m.get("role") != "assistant":
+            if field(m, "role") != "assistant":
                 continue
-            c = m.get("content")
+            c = field(m, "content")
             if isinstance(c, str):
                 return c
             if isinstance(c, list):
-                return " ".join(b.get("text", "") for b in c if b.get("type") == "text")
+                return " ".join(field(b, "text") or "" for b in c if field(b, "type") == "text")
             return ""
         return ""
 

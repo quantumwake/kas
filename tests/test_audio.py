@@ -181,7 +181,11 @@ msgs = [
 assert WorkerLoops._reply_text(msgs) == "goodbye now"
 assert WorkerLoops._reply_text(msgs[:2]) == "hello there"
 assert WorkerLoops._reply_text([{"role": "user", "content": "x"}]) == ""
-print("tts reply_text: OK")
+# content blocks may be OBJECTS (SDK/pydantic), not dicts — thinking skipped, no crash
+think = types.SimpleNamespace(type="thinking", thinking="hmm")
+say_block = types.SimpleNamespace(type="text", text="the answer")
+assert WorkerLoops._reply_text([{"role": "assistant", "content": [think, say_block]}]) == "the answer"
+print("tts reply_text (dict + object blocks): OK")
 
 
 # --- wav decode (the fds_to_keep fix: hand whisper samples, not a path) ------
