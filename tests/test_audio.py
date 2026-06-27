@@ -59,4 +59,60 @@ text, is_err = stt.transcribe(wav)
 assert not is_err and text == "hello world", (text, is_err)
 print("transcribe success (mocked): OK")
 
+
+# --- text→voice (TTS) -------------------------------------------------------
+from agent.adapters.audio import tts  # noqa: E402
+
+# native command building per OS (macOS say / linux espeak family) or None.
+cmd = tts._native_cmd("hello world")
+assert cmd is None or (cmd[0] in ("say", "espeak-ng", "espeak", "spd-say") and "hello world" in cmd)
+print("tts native_cmd: OK")
+
+# speak() with no engine -> graceful error; with a stubbed Popen -> launches.
+orig_native = tts._native_cmd
+orig_mlx = tts._mlx_available
+tts._native_cmd = lambda _t: None
+tts._mlx_available = lambda: False
+try:
+    msg, is_err = tts.speak("hi")
+    assert is_err and "TTS" in msg, (msg, is_err)
+finally:
+    tts._native_cmd = orig_native
+    tts._mlx_available = orig_mlx
+
+launched = {}
+orig_popen = tts.subprocess.Popen
+tts._native_cmd = lambda t: ["true", t]
+
+
+def _fake_popen(cmd, **kw):
+    launched["cmd"] = cmd
+    return type("P", (), {"poll": lambda self: None, "terminate": lambda self: None})()
+
+
+tts.subprocess.Popen = _fake_popen
+try:
+    msg, is_err = tts.speak("speak this")
+    assert not is_err and launched["cmd"] == ["true", "speak this"], (msg, launched)
+    # empty text is a no-op success
+    assert tts.speak("   ") == ("", False)
+finally:
+    tts._native_cmd = orig_native
+    tts.subprocess.Popen = orig_popen
+print("tts speak: OK")
+
+# _reply_text pulls the last assistant text out of a transcript (for /say).
+from agent.tui.loops import WorkerLoops  # noqa: E402
+
+msgs = [
+    {"role": "user", "content": "hi"},
+    {"role": "assistant", "content": [{"type": "text", "text": "hello there"}]},
+    {"role": "user", "content": "bye"},
+    {"role": "assistant", "content": "goodbye now"},
+]
+assert WorkerLoops._reply_text(msgs) == "goodbye now"
+assert WorkerLoops._reply_text(msgs[:2]) == "hello there"
+assert WorkerLoops._reply_text([{"role": "user", "content": "x"}]) == ""
+print("tts reply_text: OK")
+
 print("all audio tests passed")

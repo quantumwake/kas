@@ -14,6 +14,27 @@ from agent import main as core
 
 
 class WorkerLoops:
+    @staticmethod
+    def _reply_text(messages: list) -> str:
+        """The plain text of the last assistant message (for /say)."""
+        for m in reversed(messages):
+            if m.get("role") != "assistant":
+                continue
+            c = m.get("content")
+            if isinstance(c, str):
+                return c
+            if isinstance(c, list):
+                return " ".join(b.get("text", "") for b in c if b.get("type") == "text")
+            return ""
+        return ""
+
+    def _speak_last_reply(self, messages: list) -> None:
+        from ..adapters.audio import tts
+
+        text = self._reply_text(messages)
+        if text.strip():
+            tts.speak(text)
+
     def _agent_loop(self) -> None:
         messages = self.messages
         while True:
@@ -89,6 +110,8 @@ class WorkerLoops:
                         store=self.store,
                     )
                     leftovers = self.io.drain_steers()
+                if self.tts_on:
+                    self._speak_last_reply(messages)
             except anthropic.APIError as exc:
                 self.io.notice(f"[api error] {exc}")
             except Exception as exc:  # keep the UI alive on agent bugs

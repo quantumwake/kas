@@ -166,6 +166,7 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
         self._alive = True
         self._pastes: list[str] = []  # staged multiline pastes, sent with next message
         self._pending_images: list[str] = []  # /image: paths attached to the next user turn
+        self.tts_on = False  # /say: speak assistant replies aloud
         self._completions = COMMANDS  # Tab-complete candidates (see PasteInput)
         self._fx_browsing = False  # /fx browse: Tab/Space flips effects live
         self.viz = VizModes()  # /viz: per-token confidence/topk/entropy overlays

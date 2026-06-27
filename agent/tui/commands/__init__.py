@@ -23,6 +23,7 @@ from .memory import MemoryCommand
 from .model import ModelCommand
 from .pause import PauseCommand
 from .sandbox import SandboxCommand
+from .say import SayCommand
 from .self_skill import SelfSkillCommand
 from .show import ShowCommand
 from .spec import SpecCommand
@@ -57,6 +58,7 @@ REGISTRY = [
     ShowCommand(),
     ListenCommand(),
     ImageCommand(),
+    SayCommand(),
     SandboxCommand(),
     StatusCommand(),
 ]
