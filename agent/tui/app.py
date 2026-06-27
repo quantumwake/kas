@@ -165,6 +165,7 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
         self.turns = 0
         self._alive = True
         self._pastes: list[str] = []  # staged multiline pastes, sent with next message
+        self._pending_images: list[str] = []  # /image: paths attached to the next user turn
         self._completions = COMMANDS  # Tab-complete candidates (see PasteInput)
         self._fx_browsing = False  # /fx browse: Tab/Space flips effects live
         self.viz = VizModes()  # /viz: per-token confidence/topk/entropy overlays
@@ -239,6 +240,41 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
                 style="magenta",
             )
         )
+
+    def user_content(self, task: str):
+        """Build the next user turn's content. With staged images (drag-drop or
+        /image), emit an Anthropic multimodal block list (text + images) and clear
+        the stage; otherwise just the plain string (no change for text turns).
+
+        Default is a PATH source — the server runs locally, so it reads the file
+        bytes directly (no base64 bloat on the wire). Set KAS_IMAGE_INLINE=1 to
+        embed base64 instead, for when the server is on another host."""
+        if not self._pending_images:
+            return task
+        import mimetypes
+        import os
+
+        inline = os.environ.get("KAS_IMAGE_INLINE") == "1"
+        blocks: list[dict] = [{"type": "text", "text": task}] if task else []
+        for p in self._pending_images:
+            media = mimetypes.guess_type(p)[0] or "image/png"
+            if inline:
+                import base64
+
+                try:
+                    data = base64.b64encode(pathlib.Path(p).read_bytes()).decode()
+                except OSError:
+                    continue
+                source = {"type": "base64", "media_type": media, "data": data}
+            else:
+                source = {
+                    "type": "path",
+                    "path": str(pathlib.Path(p).resolve()),
+                    "media_type": media,
+                }
+            blocks.append({"type": "image", "source": source})
+        self._pending_images = []
+        return blocks or task
 
     def action_compose(self, extra: str = "") -> None:
         """Open the Composer over the current input + staged draft(s) (+ `extra`),

@@ -46,7 +46,17 @@ class ThinkingBlock(BaseModel):
     signature: str = ""
 
 
-ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock | ThinkingBlock
+class ImageBlock(BaseModel):
+    """Anthropic-style image input for vision (VLM) models. `source` is either
+    {"type":"base64","media_type":...,"data":...} or {"type":"path","path":...}
+    (a local-file convenience our TUI uses to avoid base64-bloating the wire)."""
+
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["image"] = "image"
+    source: dict[str, Any]
+
+
+ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock | ThinkingBlock | ImageBlock
 
 
 class Message(BaseModel):

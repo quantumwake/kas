@@ -16,6 +16,7 @@ from .compact import CompactCommand
 from .ctx import CtxCommand
 from .fx import FxCommand
 from .help import HelpCommand
+from .image import ImageCommand
 from .kv import KvCommand
 from .listen import ListenCommand
 from .memory import MemoryCommand
@@ -55,6 +56,7 @@ REGISTRY = [
     ArtCommand(),
     ShowCommand(),
     ListenCommand(),
+    ImageCommand(),
     SandboxCommand(),
     StatusCommand(),
 ]
@@ -111,6 +113,7 @@ class CommandHandler:
                 Text("[queued steering — applies at the next tool boundary]", style="magenta")
             )
             return
+        text = self._capture_dropped_images(text)
         preview = text.splitlines()[0][:80] + (" …" if "\n" in text or len(text) > 80 else "")
         if getattr(self, "_mdui_rule", False):  # gated; default OFF
             self.turn_rule("you", "#3fb950")
@@ -119,6 +122,35 @@ class CommandHandler:
         else:
             self.body_write(Text(f"\nyou> {preview}", style="bold"))
         self.msg_q.put(text)
+
+    IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".heic")
+
+    def _capture_dropped_images(self, text: str) -> str:
+        """Pull dragged/typed image paths out of `text`, stage them for the next
+        user turn (attached by reference — no base64), and return the remaining
+        text. Dropping a file onto the terminal pastes its (shell-escaped) path,
+        so shlex resolves quotes/backslash-escapes the way the terminal wrote
+        them; non-path prose is left untouched."""
+        import os
+        import shlex
+
+        try:
+            tokens = shlex.split(text)
+        except ValueError:
+            return text  # unbalanced quotes -> treat as plain prose, no capture
+        imgs, rest = [], []
+        for tok in tokens:
+            p = os.path.expanduser(tok)
+            if tok.lower().endswith(self.IMAGE_EXTS) and os.path.isfile(p):
+                imgs.append(p)
+            else:
+                rest.append(tok)
+        if not imgs:
+            return text
+        self._pending_images.extend(imgs)
+        names = ", ".join(os.path.basename(i) for i in imgs)
+        self.body_write(Text(f"📎 attached {len(imgs)} image(s): {names}", style="cyan"))
+        return " ".join(rest)
 
     def _dispatch_command(self, text: str) -> None:
         """Route a /slash command to the first registry entry that matches; the

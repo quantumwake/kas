@@ -42,6 +42,7 @@ class FakeApp(CommandHandler):
         self.confirming = confirming
         self.busy = busy
         self._pastes: list[str] = []
+        self._pending_images: list[str] = []
         self.runner = FakeRunner()
         self.io = FakeIO()
         self.messages = messages if messages is not None else []

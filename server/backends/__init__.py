@@ -50,6 +50,12 @@ def _load_llama_cpp() -> EngineFactory:
     return LlamaCppEngine
 
 
+def _load_mlx_vlm() -> EngineFactory:
+    from .mlx_vlm import MlxVlmEngine
+
+    return MlxVlmEngine
+
+
 def _has(module: str) -> Callable[[], bool]:
     # importable check WITHOUT importing (find_spec doesn't run the module).
     return lambda: importlib.util.find_spec(module) is not None
@@ -80,6 +86,12 @@ BACKENDS: dict[str, Backend] = {
         installed=_has("llama_cpp"),
         requires="llama-cpp-python (any OS; build with CUDA/ROCm/Metal for GPU)",
     ),
+    "mlx_vlm": Backend(
+        load=_load_mlx_vlm,
+        supported=_is_apple_silicon,
+        installed=_has("mlx_vlm"),
+        requires="macOS on Apple Silicon (arm64) with mlx-vlm (for vision models)",
+    ),
 }
 
 
@@ -88,15 +100,34 @@ def available_backends() -> list[str]:
     return sorted(name for name, b in BACKENDS.items() if b.supported() and b.installed())
 
 
+def _is_vision_model(model_id: str) -> bool:
+    """Does this model need a VLM runtime? Classified from its config (reuses
+    the picker's modality classifier); best-effort — returns False if unknown."""
+    try:
+        import glob
+        import pathlib
+
+        from scripts.select_model import model_kind
+
+        hub = pathlib.Path.home() / ".cache" / "huggingface" / "hub"
+        d = hub / ("models--" + model_id.replace("/", "--"))
+        snaps = sorted(glob.glob(str(d / "snapshots" / "*")))
+        return bool(snaps) and model_kind(pathlib.Path(snaps[-1])) == "vision"
+    except Exception:
+        return False
+
+
 def _detect_backend(model_id: str) -> str:
-    """Best-effort backend guess from the model id AND the platform. Conservative:
-    a GGUF id implies llama.cpp (cross-platform); otherwise prefer MLX on Apple
-    Silicon. On a non-Apple host with a non-GGUF id we still return "mlx" so
-    make_engine raises a clear platform error rather than silently guessing — when
-    a CUDA/vLLM backend lands, prefer it here."""
+    """Best-effort backend guess from the model id AND the platform. Vision (VLM)
+    models go to mlx_vlm on Apple Silicon; a GGUF id implies llama.cpp
+    (cross-platform); otherwise prefer MLX. On a non-Apple host with a non-GGUF id
+    we still return "mlx" so make_engine raises a clear platform error rather than
+    silently guessing — when a CUDA/vLLM backend lands, prefer it here."""
     low = model_id.lower()
     if low.endswith(".gguf") or "gguf" in low:
-        return "llama_cpp"  # GGUF -> llama.cpp (not yet implemented; see below)
+        return "llama_cpp"  # GGUF -> llama.cpp
+    if _is_apple_silicon() and _has("mlx_vlm")() and _is_vision_model(model_id):
+        return "mlx_vlm"
     if _is_apple_silicon():
         return "mlx"
     return "mlx"

@@ -64,7 +64,7 @@ class WorkerLoops:
                             }
                         )
                 else:
-                    messages.append({"role": "user", "content": task})
+                    messages.append({"role": "user", "content": self.user_content(task)})
                 core.agent_turn(
                     self.client,
                     messages,

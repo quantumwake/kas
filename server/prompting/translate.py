@@ -9,7 +9,15 @@ dialect shapes consumed by `apply_chat_template`.
 
 from typing import Any
 
-from ..schema import Message, TextBlock, ThinkingBlock, ToolDef, ToolResultBlock, ToolUseBlock
+from ..schema import (
+    ImageBlock,
+    Message,
+    TextBlock,
+    ThinkingBlock,
+    ToolDef,
+    ToolResultBlock,
+    ToolUseBlock,
+)
 from .dialects import GemmaDialect
 
 
@@ -100,8 +108,9 @@ def to_chat_messages(
         else:
             # Tool results become role:"tool" messages (the template forward-scans
             # them from the preceding assistant tool_calls turn); remaining text
-            # becomes a normal user message.
-            texts = []
+            # becomes a normal user message. Images (vision models) are carried as
+            # structured content entries the VLM backend extracts in tokenize().
+            texts, images = [], []
             for b in blocks:
                 if isinstance(b, ToolResultBlock):
                     chat.append(
@@ -113,9 +122,16 @@ def to_chat_messages(
                     )
                 elif isinstance(b, TextBlock):
                     texts.append(b.text)
-            if texts:
+                elif isinstance(b, ImageBlock):
+                    images.append({"type": "image", "source": b.source})
+            if texts or images:
                 text = "\n\n".join(texts)
-                if chat and chat[-1]["role"] == "user":
+                if images:
+                    # Multimodal content list: text + image entries. Text-only
+                    # backends never see this (images only target vision models).
+                    content: Any = ([{"type": "text", "text": text}] if text else []) + images
+                    chat.append({"role": "user", "content": content})
+                elif chat and chat[-1]["role"] == "user":
                     chat[-1]["content"] += "\n\n" + text
                 else:
                     chat.append({"role": "user", "content": text})
