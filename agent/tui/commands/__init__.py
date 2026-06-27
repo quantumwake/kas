@@ -17,6 +17,7 @@ from .ctx import CtxCommand
 from .fx import FxCommand
 from .help import HelpCommand
 from .kv import KvCommand
+from .listen import ListenCommand
 from .memory import MemoryCommand
 from .model import ModelCommand
 from .pause import PauseCommand
@@ -53,6 +54,7 @@ REGISTRY = [
     KvCommand(),
     ArtCommand(),
     ShowCommand(),
+    ListenCommand(),
     SandboxCommand(),
     StatusCommand(),
 ]

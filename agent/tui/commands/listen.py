@@ -1,0 +1,70 @@
+"""/listen [seconds] — record from the mic and transcribe into the input box."""
+
+import pathlib
+import tempfile
+import threading
+
+from rich.text import Text
+from textual.widgets import Input
+
+from ...adapters.audio.record import record
+from ...adapters.audio.stt import DEFAULT_MODEL, transcribe, whisper_available
+from .base import Command
+
+
+class ListenCommand(Command):
+    name = "/listen"
+    summary = "record from the mic and transcribe to the input box (voice→text)"
+    usage = "[seconds]"
+
+    def run(self, app, arg: str) -> None:
+        if not whisper_available():
+            app.body_write(
+                Text(
+                    "voice→text needs mlx-whisper (uv add mlx-whisper) on Apple Silicon",
+                    style="yellow",
+                )
+            )
+            return
+        secs = int(arg) if arg.strip().isdigit() else 5
+        secs = max(1, min(secs, 120))
+        app.body_write(Text(f"🎙  listening for {secs}s… (model: {DEFAULT_MODEL})", style="cyan"))
+
+        def worker() -> None:
+            wav = pathlib.Path(tempfile.mktemp(suffix=".wav"))
+            path, err = record(wav, secs)
+            if err:
+                self._note(app, err, "red")
+                return
+            text, is_err = transcribe(path)
+            try:
+                path.unlink()
+            except OSError:
+                pass
+            if is_err:
+                self._note(app, text, "red")
+            elif not text:
+                self._note(app, "(heard nothing)", "yellow")
+            else:
+                self._insert(app, text)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    @staticmethod
+    def _note(app, msg: str, style: str) -> None:
+        try:
+            app.call_from_thread(app.body_write, Text(msg, style=style))
+        except Exception:
+            pass
+
+    @staticmethod
+    def _insert(app, text: str) -> None:
+        def do() -> None:
+            inp = app.query_one(Input)
+            inp.value = f"{inp.value} {text}".strip() if inp.value else text
+            app.body_write(Text(f"📝 {text}", style="green"))
+
+        try:
+            app.call_from_thread(do)
+        except Exception:
+            pass
