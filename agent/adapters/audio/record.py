@@ -48,6 +48,18 @@ def _loudness_to_level(lufs: float) -> float:
     return max(0.0, min(1.0, (lufs + 50.0) / 50.0))
 
 
+def silence_hold_secs(spoke_secs: float = 0.0) -> float:
+    """How long a pause AFTER speech must last to end the turn (the VAD endpoint).
+
+    This is a coefficient we'll make dynamic — long/complex utterances deserve a
+    longer grace pause (the speaker breathes mid-thought) than short ones, and it
+    could also scale with speech rate, trailing intonation, etc. For now it's a
+    flat 2.5s (a within-sentence breath won't trip it, but a real end-of-turn
+    will), overridable via KAS_STT_SILENCE. `spoke_secs` (how long the user has
+    been talking) is the first signal the dynamic version will use."""
+    return float(os.environ.get("KAS_STT_SILENCE", "2.5"))
+
+
 NO_SPEECH = "no_speech"  # err sentinel: VAD heard nothing within silence_limit
 
 
@@ -95,7 +107,6 @@ def record(
     if cue is not None:
         cue.start()
 
-    silence_hold = float(os.environ.get("KAS_STT_SILENCE", "1.2"))
     speech_thresh = float(os.environ.get("KAS_STT_VAD_THRESH", "0.12"))
     import time as _time
 
@@ -104,6 +115,7 @@ def record(
     no_speech = False
     start = _time.monotonic() + warmup  # don't count the warmup lead-in
     last_loud = start
+    speech_start = None  # when the user first started talking (for the dynamic hold)
 
     def _stop() -> None:
         try:
@@ -139,9 +151,11 @@ def record(
                 continue
             now = _time.monotonic()
             if level >= speech_thresh:
+                if speech_start is None:
+                    speech_start = now
                 spoke = True
                 last_loud = now
-            elif spoke and now - last_loud >= silence_hold:
+            elif spoke and now - last_loud >= silence_hold_secs(now - (speech_start or now)):
                 _stop()  # end of turn — graceful finalize
             elif not spoke and silence_limit and now - start >= silence_limit:
                 no_speech = True  # nobody spoke within the window

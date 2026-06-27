@@ -21,6 +21,18 @@ if cmd is not None:  # None only on an unknown OS
     assert any(f in cmd for f in ("avfoundation", "pulse"))
 print("record_command: OK")
 
+# VAD endpoint coefficient: 2.5s default (long-sentence pauses don't cut off),
+# env-overridable; signature takes spoke_secs for the future dynamic version.
+assert rec.silence_hold_secs() == 2.5
+import os as _os  # noqa: E402
+
+_os.environ["KAS_STT_SILENCE"] = "1.0"
+try:
+    assert rec.silence_hold_secs(spoke_secs=8.0) == 1.0
+finally:
+    del _os.environ["KAS_STT_SILENCE"]
+print("silence_hold_secs: OK")
+
 # record() degrades when ffmpeg is missing (simulate via PATH lookup miss).
 orig_which = rec.shutil.which
 rec.shutil.which = lambda _name: None
