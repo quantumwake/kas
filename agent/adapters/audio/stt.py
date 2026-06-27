@@ -11,6 +11,7 @@ package or model returns an (error_message, True) pair rather than raising.
 import importlib.util
 import os
 import pathlib
+import threading
 
 DEFAULT_MODEL = os.environ.get("KAS_STT_MODEL", "mlx-community/whisper-large-v3-turbo")
 
@@ -66,7 +67,7 @@ def _load_wav_16k_mono(path: pathlib.Path):
 
 # One warm worker process per kas session, created on first use (or preload()).
 _TRANSCRIBER = None
-_TRANSCRIBER_LOCK = __import__("threading").Lock()
+_TRANSCRIBER_LOCK = threading.Lock()
 
 
 def _transcriber(model: str | None = None):

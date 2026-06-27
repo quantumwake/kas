@@ -204,12 +204,18 @@ class FxEffects:
         return t
 
     def _vu(self, w: int, shades: list[str]) -> Text:
-        # random equalizer bars that jump and decay (music-meter feel)
+        # Equalizer bars. During a voice op (app.voice_level set) the bars track
+        # the REAL mic level — a live voice synthesiser chart; otherwise they jump
+        # and decay procedurally (music-meter feel).
         if len(self._cells) != w:
             self._cells = [0.0] * w
+        live = getattr(self.app, "voice_level", None)
         for i in range(w):
             self._cells[i] = max(0.0, self._cells[i] - 0.12)
-            if random.random() < 0.10:
+            if live is not None:
+                jump = min(1.0, live * (0.55 + random.random() * 0.9))
+                self._cells[i] = max(self._cells[i], jump)
+            elif random.random() < 0.10:
                 self._cells[i] = random.random()
         t = Text()
         for v in self._cells:

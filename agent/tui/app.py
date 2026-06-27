@@ -156,6 +156,7 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
         self.fx_mode = "idle"  # current state, drives the ambient FxBar animation
         self.fx_stats: dict = {}  # live tps/processed/total for data-driven fx
         self.fx_override: dict | None = None  # voice op owns the indicator while active
+        self.voice_level: float | None = None  # live mic level (0..1) -> fx voice meter
         self.tok_in = 0  # cumulative session prompt tokens (for /stats)
         self.tok_out = 0  # cumulative session generated tokens
         self.tok_cache_read = 0  # cumulative cache-read (reused prompt) tokens
@@ -254,6 +255,7 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
         style = {"listening": "#39e85a", "transcribing": "#ffa657", "speaking": "#ff5fd0"}
         if mode is None:
             self.fx_override = None
+            self.voice_level = None  # stop driving the voice meter
             return
         self.fx_override = {
             "mode": mode,

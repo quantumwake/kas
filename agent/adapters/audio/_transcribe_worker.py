@@ -1,20 +1,18 @@
-"""mlx-whisper in a CLEAN, isolated subprocess — and, in --serve mode, a
-LONG-LIVED one that loads the model ONCE and transcribes many clips, so /listen
-isn't paying the model-load cost every time.
+"""mlx-whisper in a CLEAN, isolated, LONG-LIVED subprocess: it loads the model
+ONCE and transcribes many clips, so /listen never pays the model-load cost twice
+(the Transcriber manager owns one of these per session).
 
 Isolation matters: spawning whisper from inside the TUI's worker thread inherits
 Textual's std fds and dies with "bad value(s) in fds_to_keep" when whisper (or a
 dep) forks. A fresh process sidesteps that; a persistent one also stays warm.
 
+  python -m agent.adapters.audio._transcribe_worker --serve <model>
+      (then write one wav path per line on stdin)
+
 Streams newline-delimited JSON on stdout:
-  {"event":"ready"}                       (serve mode: model loaded, send paths)
-  {"event":"loading","model":...}
+  {"event":"loading","model":...} {"event":"ready"}   (model loaded; send paths)
   {"event":"transcribing","audio_secs":5.0}
   {"event":"done","text":"..."}  |  {"event":"error","msg":<traceback>}
-
-  python -m agent.adapters.audio._transcribe_worker <wav> <model>     # one-shot
-  python -m agent.adapters.audio._transcribe_worker --serve <model>   # server
-      (then write one wav path per line on stdin; a {"done"|"error"} per line)
 """
 
 import json
@@ -75,23 +73,10 @@ def _serve(model: str) -> int:
 
 def main() -> int:
     args = sys.argv[1:]
-    if args and args[0] == "--serve":
-        if len(args) < 2:
-            _emit(event="error", msg="usage: --serve <model>")
-            return 2
-        return _serve(args[1])
-    if len(args) < 2:
-        _emit(event="error", msg="usage: _transcribe_worker <wav> <model>")
+    if len(args) != 2 or args[0] != "--serve":
+        _emit(event="error", msg="usage: _transcribe_worker --serve <model>")
         return 2
-    try:
-        _emit(event="loading", model=args[1])
-        _transcribe_one(args[0], args[1])
-        return 0
-    except Exception:
-        import traceback
-
-        _emit(event="error", msg=traceback.format_exc())
-        return 1
+    return _serve(args[1])
 
 
 if __name__ == "__main__":
