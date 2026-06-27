@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/kascli1.png" alt="KAS — Kasra's Agentic Shell, running in the terminal" width="100%" />
+  <img src="docs/kascli1.png" alt="K.A.S — Kasra's Agentic Shell, running in the terminal" width="100%" />
 </p>
 
 <p align="center">
@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/no%20telemetry-black?style=for-the-badge&labelColor=ff9d00" />
 </p>
 
-**KAS — Kasra's Agentic Shell.** Run frontier open models **locally** on the
+**K.A.S — Kasra's Agentic Shell.** Run frontier open models **locally** on the
 Apple-silicon GPU (via MLX), behind an **Anthropic Messages API-compatible
 server**, and drive them with an agentic TUI. Nothing leaves the machine — tool
 use, streaming, thinking, subagents, KV-cache continuation, local recall, and
