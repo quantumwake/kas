@@ -4,7 +4,7 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.animation import PillowWriter
+from matplotlib.animation import FuncAnimation, PillowWriter
 import random
 import sys
 import os
