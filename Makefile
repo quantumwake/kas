@@ -3,7 +3,7 @@ PORT  ?= 8765
 PIDFILE := .server.pid
 LOG     := server.log
 
-.PHONY: help start start-interactive stop restart status logs perf agent test test-gpu download lint fmt typecheck cov check install uninstall doctor smoke-serve smoke-test-voice calibrate-voice
+.PHONY: help start serve start-interactive stop restart status logs perf agent test test-gpu download lint fmt typecheck cov check install uninstall doctor smoke-serve smoke-test-voice calibrate-voice
 
 help: ## show targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-18s %s\n", $$1, $$2}'
@@ -30,6 +30,18 @@ start: ## start the inference server (MODEL=... PORT=...)
 		i=$$((i+1)); sleep 2; done; \
 		if [ $$i -gt 150 ]; then echo "server did not come up — make logs"; exit 1; fi
 	@echo "ready: http://127.0.0.1:$(PORT)/v1/messages"
+
+serve: ## run the server in the FOREGROUND (Ctrl-C to stop; crashes print live)
+	@# Same port preflight as `start`, but then run in the foreground: no nohup,
+	@# no pidfile, no readiness poll — the banner, request log, and any crash
+	@# traceback (e.g. a Metal GPU timeout) go straight to your terminal. Set
+	@# KAS_GPU_BUDGET_GB / KAS_MAX_MODELS on the command line to cap residency.
+	@if lsof -nP -iTCP:$(PORT) -sTCP:LISTEN >/dev/null 2>&1; then \
+		echo ":$(PORT) already in use — make stop, or: lsof -ti:$(PORT) | xargs kill"; exit 1; fi
+	@echo "checking weights for $(MODEL) (downloads with progress if missing)..."
+	@HF_XET_HIGH_PERFORMANCE=1 uv run hf download $(MODEL)
+	@echo "serving $(MODEL) on :$(PORT) in the foreground — Ctrl-C to stop"
+	KAS_MODEL=$(MODEL) uv run python -m server.cli --port $(PORT)
 
 start-interactive: ## pick a locally downloaded model, then start
 	@$(MAKE) start MODEL=$$(uv run python scripts/select_model.py)
