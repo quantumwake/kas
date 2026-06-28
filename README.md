@@ -64,9 +64,13 @@ Optional features (voice, vision, image-gen, memory, web, …) are **not** in th
 core install. There is **one** way to add them, used by every path:
 
 ```sh
-kas doctor            # see what's available + installed on your host
-kas doctor --install  # guided: install the features that work here (persists)
+kas doctor
+kas doctor --install
 ```
+
+`kas doctor` reports what's available and installed on your host; `kas doctor
+--install` walks you through installing the features that work here and persists
+the choice.
 
 You can also add a single feature in the TUI — `/listen install` (voice),
 `/image install` (vision), `/memory install`, `/say install`, `/show install` —
@@ -86,25 +90,35 @@ if its package is absent.
 
 ### Uninstall
 
-```sh
-kas doctor --remove vision   # drop ONE feature (voice|tts|art|memory|web|preview)
+Drop a single feature (one of `voice`, `tts`, `art`, `vision`, `memory`, `web`,
+`preview`):
 
-# remove kas entirely:
-curl -fsSL https://raw.githubusercontent.com/quantumwake/kas/main/uninstall.sh | sh
-# or, from a checkout:  make uninstall      (KAS_PURGE=1 also drops ~/.kascode)
+```sh
+kas doctor --remove vision
 ```
 
-Uninstall removes the tool only; your config under `~/.kascode` and downloaded
-model weights under `~/.cache/huggingface` are left in place (the script prints
-how to remove them).
+Remove kas entirely:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/quantumwake/kas/main/uninstall.sh | sh
+```
+
+From a local checkout, `make uninstall` does the same; set `KAS_PURGE=1` to also
+drop `~/.kascode`. Uninstall removes the tool only — your config under
+`~/.kascode` and downloaded model weights under `~/.cache/huggingface` are left
+in place (the script prints how to remove them).
 
 ## Quick start
 
 ```sh
-kas serve            # start the inference server (daemon; loads the model)
-kas                  # launch the agent TUI
+kas serve
+kas
+```
 
-# one-shot, fully autonomous:
+`kas serve` starts the inference server (a daemon that loads the model); `kas`
+launches the agent TUI. For a one-shot, fully autonomous run:
+
+```sh
 kas --yolo "build me an asteroids game in ./game, then run it"
 ```
 
