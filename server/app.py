@@ -24,36 +24,52 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from .adapters.http.complete import complete
 from .adapters.http.sse import stream_safe
-from .backends import make_engine
 from .config import KV_PERSIST, MODEL_ID
 from .core import kvpersist
 from .core.continuation import echo_matches, norm_blocks, req_key, try_continuation
 from .core.pipeline import run
 from .core.ports import EngineLike
+from .registry import ModelRegistry
 from .schema import MessagesRequest
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
 log = logging.getLogger("kas")
 
-# Shared server state. Each conversation thread (main agent + each subagent)
-# gets its own KV-cache slot (in the engine) and its own continuation memo.
-# `engine` is any EngineLike backend (selected at startup), not a concrete class.
+# Shared server state. Models are held by REGISTRY (multiple resident at once,
+# routed by request model id, evicted LRU under a count cap + GPU memory budget).
+# `engine`/`_memos` remain as back-compat globals: when REGISTRY is None (unit
+# tests that inject a fake engine directly), the routes fall back to them.
+REGISTRY: ModelRegistry | None = None
 engine: EngineLike | None = None
 _memos: dict[str, dict[str, Any]] = {}
 
 
+def _resolve(model_id: str | None) -> EngineLike | None:
+    """The engine for a request's model: the registry loads/routes it; absent a
+    registry (injected-engine unit tests) fall back to the global engine."""
+    if REGISTRY is not None:
+        return REGISTRY.get(model_id)
+    return engine
+
+
+def _memos_for(model_id: str | None) -> dict:
+    return REGISTRY.memos(model_id) if REGISTRY is not None else _memos
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    global engine
+    global engine, REGISTRY
     try:
         from scripts.banner import print_console
 
         print_console(model=MODEL_ID, extra="inference server")
     except Exception:
         pass
-    # Pick the backend (KAS_BACKEND, else auto-detected from the model id) —
-    # MLX today, llama.cpp/CUDA/ROCm later — without the server knowing which.
-    engine = make_engine(MODEL_ID)
+    # The registry picks the backend per model (KAS_BACKEND, else auto-detected)
+    # — MLX today, llama.cpp/CUDA/ROCm later. Preload the default; `engine` points
+    # at it so back-compat callers see a ready engine.
+    REGISTRY = ModelRegistry(MODEL_ID)
+    engine = REGISTRY.get(MODEL_ID)
     yield
 
 
@@ -95,50 +111,94 @@ async def fallback_handler(_: Request, exc: Exception):
     return error_response(500, "api_error", f"{type(exc).__name__}: {exc}")
 
 
-def _served_id() -> str:
-    return engine.model_id if engine else MODEL_ID
+def _active_engine() -> EngineLike | None:
+    """The engine to report live stats for: an actively-generating one if any,
+    else the most-recently-used. Falls back to the global engine sans registry."""
+    if REGISTRY is None:
+        return engine
+    for mid in reversed(REGISTRY.loaded()):  # most-recent first
+        e = REGISTRY.peek(mid)
+        if e is not None and getattr(e, "stats", {}).get("active"):
+            return e
+    return REGISTRY.most_recent()
 
 
 @app.get("/v1/models")
 def list_models() -> dict[str, Any]:
-    mid = _served_id()
-    return {
-        "data": [
-            {
-                "type": "model",
-                "id": mid,
-                "display_name": mid,
-                "dialect": getattr(engine, "dialect", None) and engine.dialect.name,
-                "context_length": getattr(engine, "context_length", None),
-            }
-        ]
-    }
+    """Every loaded model (not just one) — id, dialect, active, GPU GB, default."""
+    if REGISTRY is not None:
+        return {
+            "data": [
+                {
+                    "type": "model",
+                    "id": m["id"],
+                    "display_name": m["id"],
+                    "dialect": m["dialect"],
+                    "context_length": m["context_length"],
+                    "active": m["active"],
+                    "gpu_active_gb": m["gpu_active_gb"],
+                    "est_gb": m["est_gb"],
+                    "default": m["default"],
+                }
+                for m in REGISTRY.info()
+            ]
+        }
+    mid = engine.model_id if engine else MODEL_ID
+    return {"data": [{"type": "model", "id": mid, "display_name": mid}]}
 
 
 @app.post("/v1/models/select")
 def select_model(payload: dict[str, Any]):
-    """Hot-swap the served model. Queued behind any in-flight generation."""
+    """Preload a model and make it the default. With the registry, other loaded
+    models stay resident (subject to the cap + GPU budget) rather than swapping."""
     model_id = (payload or {}).get("model")
     if not model_id or not isinstance(model_id, str):
         return error_response(400, "invalid_request_error", "body must include 'model'")
-    if engine is None:
-        return error_response(500, "api_error", "engine not ready")
-    if model_id == engine.model_id:
-        return {"ok": True, "model": engine.model_id, "dialect": engine.dialect.name}
+    if REGISTRY is None:
+        return error_response(500, "api_error", "registry not ready")
     try:
-        engine.swap(model_id)
+        eng = REGISTRY.get(model_id)  # loads if needed; budget-guarded
+    except RuntimeError as exc:  # GPU budget refused the load
+        return error_response(503, "overloaded_error", str(exc))
     except Exception as exc:
-        log.exception("model swap failed")
-        return error_response(500, "api_error", f"swap failed: {type(exc).__name__}: {exc}")
-    _memos.clear()  # continuation memos are model-specific
-    return {"ok": True, "model": engine.model_id, "dialect": engine.dialect.name}
+        log.exception("model load failed")
+        return error_response(500, "api_error", f"load failed: {type(exc).__name__}: {exc}")
+    REGISTRY.default_model = model_id
+    return {
+        "ok": True,
+        "model": eng.model_id,
+        "dialect": eng.dialect.name,
+        "loaded": REGISTRY.loaded(),
+    }
+
+
+@app.post("/v1/models/unload")
+def unload_model(payload: dict[str, Any]):
+    """Offload a model and free its GPU memory. Refuses one that's generating."""
+    model_id = (payload or {}).get("model")
+    if not model_id or not isinstance(model_id, str):
+        return error_response(400, "invalid_request_error", "body must include 'model'")
+    if REGISTRY is None:
+        return error_response(400, "invalid_request_error", "no model registry")
+    ok = REGISTRY.unload(model_id)
+    return {
+        "ok": ok,
+        "loaded": REGISTRY.loaded(),
+        "message": None if ok else "not loaded, or busy generating (refused)",
+    }
 
 
 @app.post("/v1/cancel")
 def cancel_generation() -> dict[str, Any]:
-    """Interrupt the in-flight generation NOW — including a long prefill (which
-    otherwise can't be cancelled until it finishes). Lets a client stop quickly
-    and frees the worker so a queued model swap can proceed."""
+    """Interrupt the in-flight generation NOW (including a long prefill). With the
+    registry, cancels whichever loaded model is actively generating."""
+    if REGISTRY is not None:
+        active = False
+        for mid in REGISTRY.loaded():
+            e = REGISTRY.peek(mid)
+            if e is not None and getattr(e, "stats", {}).get("active"):
+                active = e.request_cancel() or active
+        return {"ok": True, "active": active}
     if engine is None:
         return {"ok": False, "active": False}
     return {"ok": True, "active": engine.request_cancel()}
@@ -146,12 +206,16 @@ def cancel_generation() -> dict[str, Any]:
 
 @app.get("/v1/stats")
 def live_stats() -> dict[str, Any]:
-    """Live generation progress — polled by clients while the stream is quiet
-    (e.g. during a long tool call, whose body is buffered until it closes)."""
-    if engine is None:
+    """Live generation progress (polled while a stream is quiet) + a `models`
+    list so a client can show everything resident and offload from there."""
+    eng = _active_engine()
+    if eng is None:
         return {"model": MODEL_ID, "active": False}
-    sysstats = getattr(engine, "system_stats", lambda: {})()
-    return {"model": MODEL_ID, **engine.stats, **engine.ping_status(), **sysstats}
+    sysstats = getattr(eng, "system_stats", lambda: {})()
+    out = {"model": eng.model_id, **eng.stats, **eng.ping_status(), **sysstats}
+    if REGISTRY is not None:
+        out["models"] = REGISTRY.info()
+    return out
 
 
 def _validate(req: MessagesRequest) -> JSONResponse | None:
@@ -177,33 +241,46 @@ def messages(req: MessagesRequest, request: Request):
     # log thread=main they're sharing a KV slot + continuation memo (e.g. an agent
     # process running pre-fix code) — restart the agents.
     log.info("turn model=%s thread=%s stream=%s", req.model, thread, req.stream)
+    # Route to the requested model — the registry loads/holds it (LRU + GPU
+    # budget). A refused load (budget full) surfaces as 503, not a crash.
+    try:
+        eng = _resolve(req.model)
+    except RuntimeError as exc:
+        return error_response(503, "overloaded_error", str(exc))
+    except Exception as exc:
+        log.exception("model load failed")
+        return error_response(500, "api_error", f"load failed: {type(exc).__name__}: {exc}")
+    if eng is None:
+        return error_response(500, "api_error", "engine not ready")
+    memos = _memos_for(req.model)
     # /viz: when the client asks (any overlay on), the engine emits per-token
     # logprobs. Only then — the top-k+entropy compute isn't free.
     viz = bool(request.headers.get("x-agent-viz"))
 
     # Warm KV-resume: if persistence is on and the agent told us its session
     # dir, rehydrate this thread's KV cache + continuation memo from disk before
-    # the first turn (no-op once the slot is warm in memory). Best-effort.
+    # the first turn (no-op once warm). Best-effort; backends without rehydrate
+    # (e.g. the VLM engine) simply cold-prefill.
     persist_dir = request.headers.get("x-agent-session-dir") if KV_PERSIST else None
-    if persist_dir and engine is not None:
+    if persist_dir and hasattr(eng, "rehydrate"):
         try:
-            status = engine.rehydrate(thread, persist_dir)
-            if status.startswith("rehydrated") and thread not in _memos:
+            status = eng.rehydrate(thread, persist_dir)
+            if status.startswith("rehydrated") and thread not in memos:
                 memo = kvpersist.read_json(
                     kvpersist.memo_path(kvpersist.thread_dir(persist_dir, thread))
                 )
                 if memo:
-                    _memos[thread] = memo
+                    memos[thread] = memo
         except Exception:
             log.info("kv rehydrate trigger failed; cold prefill", exc_info=True)
 
     if req.stream:
         return StreamingResponse(
-            stream_safe(req, engine, _memos, thread, persist_dir, viz),
+            stream_safe(req, eng, memos, thread, persist_dir, viz),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache"},
         )
-    return complete(req, engine, _memos, thread, persist_dir)
+    return complete(req, eng, memos, thread, persist_dir)
 
 
 # --------------------------------------------------------------------------

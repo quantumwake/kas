@@ -22,6 +22,7 @@ from .kv import KvCommand
 from .listen import ListenCommand
 from .memory import MemoryCommand
 from .model import ModelCommand
+from .models import ModelsCommand
 from .pause import PauseCommand
 from .sandbox import SandboxCommand
 from .say import SayCommand
@@ -41,6 +42,7 @@ from .yolo import YoloCommand
 REGISTRY = [
     StopCommand(),
     PauseCommand(),
+    ModelsCommand(),  # BEFORE ModelCommand — "/models" must not be shadowed by "/model"
     ModelCommand(),
     CompactCommand(),
     SelfSkillCommand(),

@@ -77,4 +77,56 @@ r5.get("a")  # peek finds a model only once it's actually loaded
 assert r5.peek("zzz") is None and r5.peek("a") is not None
 print("per-model memos isolated + peek: OK")
 
+# --- GPU budget: evict idle to fit; refuse what can't fit ------------------
+rb = ModelRegistry("d", max_models=10, factory=factory, budget_gb=30)
+rb._estimate_gb = lambda mid: {"big": 20.0, "big2": 20.0, "small": 5.0}.get(mid, 0.0)
+rb.get("big")  # 20 <= 30
+rb.get("small")  # 20+5 = 25 <= 30
+assert set(rb.loaded()) == {"big", "small"}
+rb.get("big2")  # 25+20 = 45 > 30 -> evict idle LRU (big) so small+big2 = 25 fits
+assert "big" not in rb.loaded() and {"small", "big2"} <= set(rb.loaded())
+print("budget evicts idle to fit: OK")
+
+# a model bigger than the whole budget is refused (evicting can't help)
+rb2 = ModelRegistry("d", factory=factory, budget_gb=10)
+rb2._estimate_gb = lambda mid: 25.0 if mid == "huge" else 0.0
+try:
+    rb2.get("huge")
+    raise AssertionError("oversize model should have been refused")
+except RuntimeError as e:
+    assert "exceeds" in str(e), e
+print("budget refuses oversize model: OK")
+
+# budget full AND the remaining model is busy -> refuse (503), don't pile on
+rb3 = ModelRegistry("d", max_models=10, factory=factory, budget_gb=30)
+rb3._estimate_gb = lambda mid: 20.0
+rb3.get("a").stats["active"] = True
+try:
+    rb3.get("b")
+    raise AssertionError("should refuse: budget full + busy")
+except RuntimeError as e:
+    assert "busy" in str(e), e
+print("budget full + busy -> refuse: OK")
+
+# --- unload frees an idle model; refuses an active one ---------------------
+ru = ModelRegistry("d", factory=factory)
+ea = ru.get("a")
+ru.get("b")
+assert ru.unload("a") is True and ea.closed is True and "a" not in ru.loaded()
+assert ru.unload("zzz") is False  # not loaded
+ru.get("c")
+ru.peek("c").stats["active"] = True
+assert ru.unload("c") is False and "c" in ru.loaded()  # busy -> refuse
+print("unload frees idle, refuses active: OK")
+
+# --- info() summarizes loaded models (id, active, default) -----------------
+ri = ModelRegistry("a", factory=factory)
+ri.get("a")
+ri.get("b")
+info = {d["id"]: d for d in ri.info()}
+assert set(info) == {"a", "b"}
+assert info["a"]["default"] is True and info["b"]["default"] is False
+assert info["a"]["active"] is False
+print("info() summary: OK")
+
 print("all registry tests passed")
