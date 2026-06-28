@@ -193,36 +193,47 @@ print("tts reply_text (dict + object blocks): OK")
 
 
 # --- wav decode (the fds_to_keep fix: hand whisper samples, not a path) ------
+# numpy rides the voice extra (via mlx-whisper); on a core-only env (e.g. CI) it
+# can be absent, so the in-process decode helper isn't exercisable — gate on it.
+import importlib.util as _ilu  # noqa: E402
 import pathlib  # noqa: E402
-import wave  # noqa: E402
 
-import numpy as np  # noqa: E402
+from agent.adapters.audio.stt import model_present  # noqa: E402
 
-from agent.adapters.audio.stt import _load_wav_16k_mono, model_present  # noqa: E402
+if _ilu.find_spec("numpy") is not None:
+    import wave  # noqa: E402
 
-wav = tempfile.mktemp(suffix=".wav")
-samp = (0.3 * np.sin(2 * np.pi * 440 * np.linspace(0, 0.5, 8000, endpoint=False)) * 32767).astype(
-    np.int16
-)
-with wave.open(wav, "wb") as w:
-    w.setnchannels(1)
-    w.setsampwidth(2)
-    w.setframerate(16000)
-    w.writeframes(samp.tobytes())
-arr = _load_wav_16k_mono(pathlib.Path(wav))
-assert arr.dtype == np.float32 and len(arr) == 8000 and -1.0 <= arr.min() and arr.max() <= 1.0
-# stereo @ 8 kHz downmixes to mono and resamples to 16 kHz
-wav2 = tempfile.mktemp(suffix=".wav")
-st = np.repeat(samp[:4000, None], 2, axis=1)
-with wave.open(wav2, "wb") as w:
-    w.setnchannels(2)
-    w.setsampwidth(2)
-    w.setframerate(8000)
-    w.writeframes(st.tobytes())
-arr2 = _load_wav_16k_mono(pathlib.Path(wav2))
-assert arr2.ndim == 1 and abs(len(arr2) - 8000) <= 2
+    import numpy as np  # noqa: E402
+
+    from agent.adapters.audio.stt import _load_wav_16k_mono  # noqa: E402
+
+    wav = tempfile.mktemp(suffix=".wav")
+    samp = (
+        0.3 * np.sin(2 * np.pi * 440 * np.linspace(0, 0.5, 8000, endpoint=False)) * 32767
+    ).astype(np.int16)
+    with wave.open(wav, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(16000)
+        w.writeframes(samp.tobytes())
+    arr = _load_wav_16k_mono(pathlib.Path(wav))
+    assert arr.dtype == np.float32 and len(arr) == 8000 and -1.0 <= arr.min() and arr.max() <= 1.0
+    # stereo @ 8 kHz downmixes to mono and resamples to 16 kHz
+    wav2 = tempfile.mktemp(suffix=".wav")
+    st = np.repeat(samp[:4000, None], 2, axis=1)
+    with wave.open(wav2, "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(8000)
+        w.writeframes(st.tobytes())
+    arr2 = _load_wav_16k_mono(pathlib.Path(wav2))
+    assert arr2.ndim == 1 and abs(len(arr2) - 8000) <= 2
+    print("wav decode: OK")
+else:
+    print("wav decode: skipped (numpy not installed — voice extra)")
+
 assert isinstance(model_present(), bool)
-print("wav decode + model_present: OK")
+print("model_present: OK")
 
 
 # --- voice indicator override (owns the live bar during /listen + /say) ------
