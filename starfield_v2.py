@@ -370,7 +370,7 @@ def draw_stars_on_surface(surface, stars, time, warp=False, galaxy_stars=None):
     for gz, sx, sy, radius, r, g, b, trail in galaxy_entries:
         # Draw trail (faint ghosting)
         for i, (tsx, tsy, tr, tb, tr2, tg, tb2) in enumerate(trail):
-            alpha = (i / max(1, len(trial))) ** 2
+            alpha = (i / max(1, len(trail))) ** 2
             rv = clamp(int(tr2 * alpha))
             gv = clamp(int(tg * alpha))
             bv = clamp(int(tb2 * alpha))
