@@ -123,28 +123,54 @@ def _active_engine() -> EngineLike | None:
     return REGISTRY.most_recent()
 
 
+def _available_models() -> list[dict[str, Any]]:
+    """Every DOWNLOADED model — the single source of truth for client pickers
+    (the agent's /model, specbuilder, …), built from the same on-disk scan the
+    agent used to do locally, so local and remote clients agree. `loaded` marks
+    the ones currently resident on this server."""
+    try:
+        from scripts.select_model import model_info
+    except Exception:
+        return []
+    if REGISTRY is not None:
+        resident = set(REGISTRY.loaded())
+    else:
+        resident = {engine.model_id} if engine else set()
+    return [
+        {
+            "id": m["id"],
+            "size_h": m.get("size_h"),
+            "kind": m.get("kind"),
+            "complete": m.get("complete", True),
+            "loaded": m["id"] in resident,
+        }
+        for m in model_info()
+    ]
+
+
 @app.get("/v1/models")
 def list_models() -> dict[str, Any]:
-    """Every loaded model (not just one) — id, dialect, active, GPU GB, default."""
+    """`data` = models resident right now (Anthropic shape + dialect/GPU/default);
+    `available` = every downloaded model (the picker source of truth)."""
     if REGISTRY is not None:
-        return {
-            "data": [
-                {
-                    "type": "model",
-                    "id": m["id"],
-                    "display_name": m["id"],
-                    "dialect": m["dialect"],
-                    "context_length": m["context_length"],
-                    "active": m["active"],
-                    "gpu_active_gb": m["gpu_active_gb"],
-                    "est_gb": m["est_gb"],
-                    "default": m["default"],
-                }
-                for m in REGISTRY.info()
-            ]
-        }
-    mid = engine.model_id if engine else MODEL_ID
-    return {"data": [{"type": "model", "id": mid, "display_name": mid}]}
+        data = [
+            {
+                "type": "model",
+                "id": m["id"],
+                "display_name": m["id"],
+                "dialect": m["dialect"],
+                "context_length": m["context_length"],
+                "active": m["active"],
+                "gpu_active_gb": m["gpu_active_gb"],
+                "est_gb": m["est_gb"],
+                "default": m["default"],
+            }
+            for m in REGISTRY.info()
+        ]
+    else:
+        mid = engine.model_id if engine else MODEL_ID
+        data = [{"type": "model", "id": mid, "display_name": mid}]
+    return {"data": data, "available": _available_models()}
 
 
 @app.post("/v1/models/select")

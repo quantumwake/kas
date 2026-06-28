@@ -6,10 +6,24 @@ import time
 import httpx
 from rich.text import Text
 
-from scripts.select_model import downloaded_models
+from scripts.select_model import CHAT_KINDS, downloaded_models
 
 from ..widgets import ModelSelect
 from .base import Command
+
+
+def _picker_models(app) -> list[str]:
+    """Model ids for the picker. Prefer the SERVER's `available` list (the single
+    source of truth — correct even against a remote --base-url); fall back to a
+    local on-disk scan if the server is unreachable or on older code."""
+    try:
+        data = httpx.get(app.base_url.rstrip("/") + "/v1/models", timeout=4).json()
+        ids = [m["id"] for m in (data.get("available") or []) if m.get("kind") in CHAT_KINDS]
+        if ids:
+            return ids
+    except Exception:
+        pass
+    return downloaded_models()
 
 
 class ModelCommand(Command):
@@ -22,7 +36,7 @@ class ModelCommand(Command):
         return text[len(self.name) :].strip() if text.startswith(self.name) else None
 
     def run(self, app, arg: str) -> None:
-        models = downloaded_models()
+        models = _picker_models(app)
         if not models:
             app.body_write(Text("no downloaded models — make download MODEL=…", style="yellow"))
             return
