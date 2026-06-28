@@ -263,7 +263,7 @@ class ShootingStar:
 
 class NebulaCloud:
     """Semi-transparent colored gas cloud in the background."""
-    __slots__ = ('cx', 'cy', 'radius', 'color', 'opacity')
+    __slots__ = ('cx', 'cy', 'radius', 'color', 'opacity', 'drift', 'phase')
 
     def __init__(self):
         self.cx = random.uniform(-400, 400)
