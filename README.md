@@ -327,6 +327,43 @@ Linux/Windows host — or live-validate a 🟡 cell — please open a PR with fi
 a note confirming a combination works (model + platform + what you ran).
 `kas doctor --json` output is a great thing to paste.
 
+### Bring your own backend (Ollama, LM Studio, vLLM, …)
+
+> **Disclaimer.** kas is built and dailied on Apple Silicon / MLX. Everything
+> else is best-effort, and the backend layer is deliberately swappable so you
+> can make it work on your stack. Fixes and new backends are very welcome —
+> the bar is simply *that it works and presents the same interfaces*.
+
+There are two integration depths:
+
+1. **Cheapest — just point the agent at it.** Any server that speaks an
+   Anthropic/OpenAI-compatible HTTP API already works: `kas --base-url
+   http://host:port`. Ollama, LM Studio, vLLM, and TGI all qualify. You get
+   inference; you do *not* get kas's KV-cache continuation, per-session KV
+   threads, or `/v1/stats` token accounting — those live in `kas-server`.
+
+2. **Native backend — implement the port.** To get the full feature set
+   (append-only KV reuse, cancellable prefill, per-session caches, token
+   counts), add an adapter under `server/backends/` and register it in the
+   `BACKENDS` dict (`server/backends/__init__.py`). It must satisfy the
+   `EngineLike` Protocol in [`server/core/ports.py`](server/core/ports.py):
+   - **inference** — `tokenize()`, `encode()`, and a streaming `generate()`
+     yielding `GenChunk`s, plus the `model_id` / `dialect` / `stats` attributes
+     (this is the *minimum* — inference + token counts, as the matrix needs);
+   - **management** — `swap()`, `request_cancel()`, `ping_status()`;
+   - **optional** — `cache_snapshot()` / `rehydrate()` for KV-resume; backends
+     that can't do it just omit them and callers degrade gracefully.
+
+   Registration is gated by `supported()` (OS/arch) and `installed()` (package
+   present), so an adapter that can't run on the current host is skipped rather
+   than erroring — see how `mlx` and `llama_cpp` are wired.
+
+An **Ollama or LM Studio native adapter** (wrapping their local API as an
+`EngineLike`) is a great first PR. Note the honest trade-off in the other
+direction: those tools currently parallelize multiple models / many concurrent
+sessions better than kas does — kas's edge is the KV-cache continuation and
+per-session KV threads. Improvements on either axis are welcome.
+
 ## Layout
 
 Hexagonal (ports & adapters) — domain logic in `core/`, edges as `ports/`
