@@ -51,6 +51,19 @@ QUANTIZED_KV_START = int(os.environ.get("KAS_KV_START", "8192"))
 # trips the client's read timeout.
 PING_SECONDS = float(os.environ.get("KAS_PING_SECONDS", "5"))
 
+# Process-wide GPU serialization lock. There is ONE Metal device; each engine has
+# its own worker thread, so once several models are resident (the registry) two
+# engines could submit command buffers concurrently. Under that contention a
+# single buffer can exceed the macOS GPU watchdog (~17s) and abort the whole
+# process with an UNCATCHABLE C++ exception (kIOGPUCommandBufferCallbackErrorTimeout).
+# Holding this lock for the duration of each generation serializes all GPU work
+# across every engine/model — requests queue rather than crash. KAS_GPU_SERIALIZE=0
+# opts out (parallel generation; only safe with one resident model).
+_GPU_LOCK = threading.Lock()
+_SERIALIZE_GPU = os.environ.get("KAS_GPU_SERIALIZE", "1") != "0"
+# Prefill chunk size handed to mlx_lm — smaller buffers are safer under load.
+PREFILL_STEP = int(os.environ.get("KAS_PREFILL_STEP", "512"))
+
 
 class _Cancelled(Exception):
     """Raised from the prefill progress callback to abort an in-flight job.
@@ -136,6 +149,12 @@ class MlxEngine:
                 return
             out_q, cancel, produce = job
             self._active_cancel = cancel  # exposed to request_cancel() + on_prefill
+            # Serialize ALL GPU work across engines: hold the process-wide lock for
+            # the whole generation so two resident models can't submit overlapping
+            # Metal command buffers (which trips the GPU watchdog -> hard abort).
+            locked = _SERIALIZE_GPU
+            if locked:
+                _GPU_LOCK.acquire()
             try:
                 for item in produce():
                     if cancel.is_set():
@@ -145,6 +164,8 @@ class MlxEngine:
             except BaseException as exc:  # propagate to the consumer
                 out_q.put(("error", exc))
             finally:
+                if locked:
+                    _GPU_LOCK.release()
                 self._active_cancel = None
 
     def close(self) -> None:
@@ -454,6 +475,7 @@ class MlxEngine:
                     sampler=sampler,
                     prompt_cache=slot["cache"],
                     prompt_progress_callback=on_prefill,
+                    prefill_step_size=PREFILL_STEP,
                 ):
                     self.stats = {
                         "active": True,
