@@ -64,9 +64,12 @@ for p in $WITH_PKGS; do WITH_FLAGS="$WITH_FLAGS --with $p"; done
 
 # --- install --------------------------------------------------------------
 SELF="$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd || true)"
-# --refresh: bypass any stale git/resolution entries a prior failed run left
-# in uv's cache (the classic "fixed the source but install still fails" case).
-if [ -n "${SELF:-}" ] && [ -f "${SELF}/pyproject.toml" ]; then
+# Only treat SELF as a local checkout if its pyproject is actually kas's. When
+# piped (`curl | sh`), $0 is "sh" so SELF resolves to the CWD — which may hold
+# an UNRELATED pyproject.toml (e.g. ~/pyproject.toml); installing that editable
+# makes setuptools try to package the whole dir. The kas-identity grep is the
+# guard. --refresh bypasses stale git/resolution entries from a prior failed run.
+if [ -n "${SELF:-}" ] && grep -q '^name = "kas"' "${SELF}/pyproject.toml" 2>/dev/null; then
     say "installing kas from local checkout (${SELF}), editable, python ${PYVER}..."
     uv tool install --force --refresh --python "$PYVER" $WITH_FLAGS --editable "$SELF"
 else
