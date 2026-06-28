@@ -96,9 +96,9 @@ for f in range(TOTAL_FRAMES):
                    c=colors, edgecolors="none", alpha=0.9)
 
     fig.canvas.draw()
-    # Convert figure to PIL Image
-    buf = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    buf.shape = (fig.canvas.get_width_height()[::-1] + (3,))
+    # Convert figure to PIL Image (modern matplotlib API)
+    buf = fig.canvas.renderer.buffer_rgba()
+    buf = np.asarray(buf)
     img = Image.fromarray(buf)
     images.append(img)
 
