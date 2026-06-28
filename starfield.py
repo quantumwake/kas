@@ -3,6 +3,8 @@
 """
 
 import numpy as np
+import matplotlib
+matplotlib.use("Agg")  # non-interactive backend, works headless
 import matplotlib.pyplot as plt
 import random
 import os
