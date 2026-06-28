@@ -171,8 +171,10 @@ def record(
             now = _time.monotonic()
             hold = silence_hold_secs(now - (speech_start or now))
             if dbg:
-                dbg.write(f"{now - start:6.2f} lvl={level:.2f} spoke={spoke} "
-                          f"sil={now - last_loud:.2f}/{hold}\n")
+                dbg.write(
+                    f"{now - start:6.2f} lvl={level:.2f} spoke={spoke} "
+                    f"sil={now - last_loud:.2f}/{hold}\n"
+                )
                 dbg.flush()
             if level >= speech_thresh:
                 if speech_start is None:

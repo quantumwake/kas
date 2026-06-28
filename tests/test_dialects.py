@@ -112,9 +112,9 @@ calls, _ = parse_one(
     LlamaDialect(),
     '<|python_tag|>{"name": "grep", "parameters": {"pattern": "TODO", "max": 5}}',
 )
-assert calls == [
-    {"id": calls[0]["id"], "name": "grep", "input": {"pattern": "TODO", "max": 5}}
-], calls
+assert calls == [{"id": calls[0]["id"], "name": "grep", "input": {"pattern": "TODO", "max": 5}}], (
+    calls
+)
 
 # Mistral — [TOOL_CALLS] + JSON array, no close marker (flush parses)
 calls, _ = parse_one(
@@ -155,7 +155,7 @@ assert not any(k == "text" and "<|start|>" in v for k, v in events), events  # n
 # Reasoning prefix: a <think> block before the call is parsed as thinking, not text.
 calls, events = parse_one(
     HermesDialect(),
-    '<think>need the file</think>\n'
+    "<think>need the file</think>\n"
     '<tool_call>\n{"name":"read_file","arguments":{"path":"d.py"}}\n</tool_call>',
 )
 thinking = "".join(v for k, v in events if k == "thinking")

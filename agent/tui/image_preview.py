@@ -70,8 +70,7 @@ def iterm_inline(path: str | pathlib.Path, max_cols: int = 64) -> str:
     data = pathlib.Path(path).read_bytes()
     b64 = base64.b64encode(data).decode()
     return (
-        f"\033]1337;File=inline=1;width={max_cols};preserveAspectRatio=1;size={len(data)}:"
-        f"{b64}\a"
+        f"\033]1337;File=inline=1;width={max_cols};preserveAspectRatio=1;size={len(data)}:{b64}\a"
     )
 
 

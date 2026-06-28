@@ -25,8 +25,15 @@ VOICE_DIRECTIVE = (
     "needed tool work quietly and report the result in one sentence.]"
 )
 STOP_PHRASES = {
-    "stop", "stop listening", "cancel", "exit", "exit voice", "pause", "quit",
-    "end conversation", "goodbye",
+    "stop",
+    "stop listening",
+    "cancel",
+    "exit",
+    "exit voice",
+    "pause",
+    "quit",
+    "end conversation",
+    "goodbye",
 }
 MAX_TURN_SECS = 30  # a single spoken turn can't exceed this
 NO_SPEECH_SECS = 15.0  # silence this long with nobody talking ends the conversation
@@ -70,8 +77,11 @@ class ConverseCommand(Command):
                     reason = "stopped"
                     break
                 text, err = listen_once(
-                    app, MAX_TURN_SECS, vad=True,
-                    silence_limit=NO_SPEECH_SECS, should_stop=lambda: not app.converse,
+                    app,
+                    MAX_TURN_SECS,
+                    vad=True,
+                    silence_limit=NO_SPEECH_SECS,
+                    should_stop=lambda: not app.converse,
                 )
                 if not app.converse:
                     reason = "stopped"

@@ -43,11 +43,17 @@ print("translate text unchanged: OK")
 # 3. _resolve_images: path passes through; base64 is written to a temp file.
 png_b64 = base64.b64encode(b"\x89PNG\r\n\x1a\nfake").decode()
 msgs = [
-    {"role": "user", "content": [
-        {"type": "text", "text": "x"},
-        {"type": "image", "source": {"type": "path", "path": "/tmp/keep.png"}},
-        {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": png_b64}},
-    ]},
+    {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "x"},
+            {"type": "image", "source": {"type": "path", "path": "/tmp/keep.png"}},
+            {
+                "type": "image",
+                "source": {"type": "base64", "media_type": "image/png", "data": png_b64},
+            },
+        ],
+    },
 ]
 paths = _resolve_images(msgs)
 assert paths[0] == "/tmp/keep.png"

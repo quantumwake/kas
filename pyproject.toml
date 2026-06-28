@@ -67,6 +67,10 @@ packages = ["agent", "server", "scripts"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Root-level scratch/play files (standalone animations, not part of the kas
+# package and not imported anywhere) — kept on request but excluded from the
+# lint/format gate so they don't fail CI.
+extend-exclude = ["starfield.py", "starfield_v2.py"]
 
 [tool.ruff.lint]
 # Strict gate: pycodestyle errors/warnings, pyflakes, import-sort, pyupgrade,

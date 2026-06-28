@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/kascli1.png" alt="K.A.S — Kasra's Agentic Shell, running in the terminal" width="100%" />
+  <img src="docs/kas.png" alt="K.A.S — Kasra's Agentic Shell, running in the terminal" width="100%" />
 </p>
 
 <p align="center">

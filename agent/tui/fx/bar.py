@@ -125,8 +125,14 @@ class FxBar(FxEffects, Static):
     # SLOWLY (calm/ambient); working states race so the difference reads at a glance.
     # Scaled by self._speed (/fx speed).
     MODE_SPEED = {
-        "idle": 0.22, "prefill": 1.0, "generating": 2.0, "tools": 1.6, "offline": 0.18,
-        "listening": 1.8, "transcribing": 1.4, "speaking": 1.8,
+        "idle": 0.22,
+        "prefill": 1.0,
+        "generating": 2.0,
+        "tools": 1.6,
+        "offline": 0.18,
+        "listening": 1.8,
+        "transcribing": 1.4,
+        "speaking": 1.8,
     }
     # /fx speed presets -> the global multiplier applied to MODE_SPEED.
     SPEED_PRESETS = {"slow": 0.4, "normal": 1.0, "fast": 1.8, "turbo": 3.0}

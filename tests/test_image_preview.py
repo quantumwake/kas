@@ -13,7 +13,15 @@ import types
 sys.path.insert(0, ".")
 
 if importlib.util.find_spec("PIL") is None:  # Pillow is the optional 'preview' extra
-    print("test_image_preview: skipped (Pillow not installed — extra [preview])")
+    msg = "test_image_preview: skipped (Pillow not installed — extra [preview])"
+    print(msg)
+    # Under pytest (run in-process via tests/test_scripts.py's runpy shim) a bare
+    # sys.exit() raises SystemExit and is reported as a FAILURE, not a skip — so
+    # skip the pytest way when a runner is present, else exit cleanly standalone.
+    if "pytest" in sys.modules:
+        import pytest
+
+        pytest.skip(msg, allow_module_level=True)
     sys.exit(0)
 
 from PIL import Image

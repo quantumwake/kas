@@ -41,8 +41,13 @@ def listen_once(
         app.voice_level = level
 
     path, err = record(
-        wav, max_secs, on_ready=cue, on_level=on_level, vad=vad,
-        silence_limit=silence_limit, should_stop=should_stop,
+        wav,
+        max_secs,
+        on_ready=cue,
+        on_level=on_level,
+        vad=vad,
+        silence_limit=silence_limit,
+        should_stop=should_stop,
     )
     if err:
         app.voice_indicator(None)

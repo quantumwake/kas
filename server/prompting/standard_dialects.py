@@ -116,9 +116,9 @@ def _first_json_object(text: str) -> dict:
 class HermesDialect(_StandardDialect):
     """ChatML JSON tool calls — the most common interchange format.
 
-        <tool_call>
-        {"name": "read_file", "arguments": {"path": "x.py"}}
-        </tool_call>
+    <tool_call>
+    {"name": "read_file", "arguments": {"path": "x.py"}}
+    </tool_call>
     """
 
     name = "hermes-json"
@@ -185,10 +185,10 @@ _DS_SEP = "<｜tool▁sep｜>"
 class DeepSeekDialect(_StandardDialect):
     """DeepSeek-V3/R1:
 
-        <｜tool▁calls▁begin｜><｜tool▁call▁begin｜>function<｜tool▁sep｜>NAME
-        ```json
-        {ARGS}
-        ```<｜tool▁call▁end｜><｜tool▁calls▁end｜>
+    <｜tool▁calls▁begin｜><｜tool▁call▁begin｜>function<｜tool▁sep｜>NAME
+    ```json
+    {ARGS}
+    ```<｜tool▁call▁end｜><｜tool▁calls▁end｜>
     """
 
     name = "deepseek"
@@ -229,9 +229,7 @@ class KimiDialect(_StandardDialect):
         if m is None:
             raise ValueError("no functions.name:idx in tool call")
         name = m.group(1).strip()
-        a = re.search(
-            r"<\|tool_call_argument_begin\|>(.*?)(?:<\|tool_call_end\|>|$)", body, re.S
-        )
+        a = re.search(r"<\|tool_call_argument_begin\|>(.*?)(?:<\|tool_call_end\|>|$)", body, re.S)
         args = a.group(1) if a else "{}"
         return _call(name, _first_json_object(args) if "{" in args else {})
 

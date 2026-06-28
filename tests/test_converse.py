@@ -37,7 +37,14 @@ print("converse gate (no whisper): OK")
 
 # whisper available -> toggles ON (stub Thread so the loop doesn't actually run).
 conv.whisper_available = lambda: True
-conv.threading.Thread = lambda *a, **k: types.SimpleNamespace(start=lambda: None)
+# Shadow converse's `threading` reference with a stub (Thread only — that's all
+# converse uses) so the loop thread never really starts. Assigning to `conv.threading`
+# (not `conv.threading.Thread`) avoids mutating the GLOBAL threading module, which
+# would leak a broken Thread into every later in-process test (tests/test_scripts.py
+# runs them all in one interpreter via runpy).
+conv.threading = types.SimpleNamespace(
+    Thread=lambda *a, **k: types.SimpleNamespace(start=lambda: None)
+)
 app = App()
 c.run(app, "")
 assert app.converse is True and app.tts_on is True, (app.converse, app.tts_on)
@@ -74,7 +81,10 @@ print("directive + stop phrases: OK")
 from agent.tui.app import AgentApp  # noqa: E402
 
 esc = types.SimpleNamespace(
-    converse=True, _fx_browsing=False, screen_stack=[1], busy=False,
+    converse=True,
+    _fx_browsing=False,
+    screen_stack=[1],
+    busy=False,
     body_write=lambda *a, **k: None,
 )
 AgentApp.action_interrupt(esc)

@@ -50,9 +50,26 @@ def model_kind(snap: pathlib.Path) -> str:
             return "text"
         # GGUF-companion configs often carry model_type but no architectures.
         if mt in (
-            "llama", "mistral", "mixtral", "qwen2", "qwen3", "qwen3_next", "qwen3_5",
-            "gemma", "gemma2", "gemma3", "phi", "phi3", "gpt_oss", "deepseek_v3",
-            "kimi_k2", "apertus", "gpt_neox", "falcon", "cohere", "command-r",
+            "llama",
+            "mistral",
+            "mixtral",
+            "qwen2",
+            "qwen3",
+            "qwen3_next",
+            "qwen3_5",
+            "gemma",
+            "gemma2",
+            "gemma3",
+            "phi",
+            "phi3",
+            "gpt_oss",
+            "deepseek_v3",
+            "kimi_k2",
+            "apertus",
+            "gpt_neox",
+            "falcon",
+            "cohere",
+            "command-r",
         ):
             return "text"
         return "other"

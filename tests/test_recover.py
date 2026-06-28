@@ -32,8 +32,7 @@ assert call(claude) == ("read_file", {"path": "src/main.py"}), call(claude)
 
 # <invoke name="..."> attribute form
 inv = (
-    '<function_calls><invoke name="get_weather">'
-    "<arguments><city>Paris</city></arguments></invoke>"
+    '<function_calls><invoke name="get_weather"><arguments><city>Paris</city></arguments></invoke>'
 )
 assert call(inv) == ("get_weather", {"city": "Paris"}), call(inv)
 

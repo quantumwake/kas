@@ -184,8 +184,10 @@ assert WorkerLoops._reply_text([{"role": "user", "content": "x"}]) == ""
 # content blocks may be OBJECTS (SDK/pydantic), not dicts — thinking skipped, no crash
 import types as _t  # noqa: E402
 
-blocks = [_t.SimpleNamespace(type="thinking", thinking="hmm"),
-          _t.SimpleNamespace(type="text", text="the answer")]
+blocks = [
+    _t.SimpleNamespace(type="thinking", thinking="hmm"),
+    _t.SimpleNamespace(type="text", text="the answer"),
+]
 assert WorkerLoops._reply_text([{"role": "assistant", "content": blocks}]) == "the answer"
 print("tts reply_text (dict + object blocks): OK")
 

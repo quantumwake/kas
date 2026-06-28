@@ -14,8 +14,15 @@ from scripts import doctor
 
 def env(os="Darwin", arch="arm64", gpu="metal", mgr="brew", **kw):
     base = {
-        "os": os, "arch": arch, "gpu": gpu, "pkg_mgr": mgr, "python": "3.11",
-        "uv": True, "ffmpeg": True, "pngpaste": True, "native_tts": True,
+        "os": os,
+        "arch": arch,
+        "gpu": gpu,
+        "pkg_mgr": mgr,
+        "python": "3.11",
+        "uv": True,
+        "ffmpeg": True,
+        "pngpaste": True,
+        "native_tts": True,
     }
     base.update(kw)
     return base

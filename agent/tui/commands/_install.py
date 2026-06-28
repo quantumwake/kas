@@ -33,8 +33,7 @@ def install_capability(app, cap_id: str) -> None:
                 app.call_from_thread(
                     app.body_write,
                     Text(
-                        "[installed — try the command again "
-                        "(restart kas if it doesn't light up)]",
+                        "[installed — try the command again (restart kas if it doesn't light up)]",
                         style="green",
                     ),
                 )

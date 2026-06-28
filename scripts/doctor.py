@@ -277,9 +277,11 @@ def capability_install_command(
         withs = [x for p in pkgs for x in ("--with", p)]
         return ["uv", "tool", "install", "--force", *_kas_source(), *withs], note + " (persists)"
     if _editable_checkout():  # dev checkout via `uv run` -> add to pyproject so syncs keep it
-        marker = "; sys_platform == 'darwin' and platform_machine == 'arm64'" if (
-            cap["gpus"] == ["metal"]
-        ) else ""
+        marker = (
+            "; sys_platform == 'darwin' and platform_machine == 'arm64'"
+            if (cap["gpus"] == ["metal"])
+            else ""
+        )
         return ["uv", "add", *[p + marker for p in cap["pkgs"]]], note + " (added to pyproject)"
     if shutil.which("uv"):
         return ["uv", "pip", "install", "--python", sys.executable, *cap["pkgs"]], note
@@ -433,8 +435,7 @@ def install_plan(env: dict, include_optional: bool = False) -> list[str]:
         else:
             avail = ", ".join(sorted(recipe)) or "n/a"
             cmds.append(
-                f"echo 'install {tool} manually "
-                f"(no recipe for {mgr or 'your OS'}; has: {avail})'"
+                f"echo 'install {tool} manually (no recipe for {mgr or 'your OS'}; has: {avail})'"
             )
 
     if not pkgs:  # no MISSING python packages -> only native-tool advice (if any)
@@ -532,7 +533,10 @@ def save_intent_from_argv(argv) -> None:
 
 
 _FEATURE_ALIASES = {
-    "tts": "tts-neural", "art": "image-gen", "image": "image-gen", "preview": "image-preview"
+    "tts": "tts-neural",
+    "art": "image-gen",
+    "image": "image-gen",
+    "preview": "image-preview",
 }
 
 
