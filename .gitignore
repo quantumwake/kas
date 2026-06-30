@@ -38,3 +38,6 @@ coverage.xml
 htmlcov/
 code-coverage-results.md
 scripts/_build_info.py
+
+# stray artifact from the poetix/specbuilder tooling — not part of kas
+.poetix/
