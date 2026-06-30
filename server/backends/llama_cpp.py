@@ -172,6 +172,16 @@ class LlamaCppEngine:
         self.n_layers = n_gpu_layers if n_gpu_layers >= 0 else None
         self.dialect = detect_dialect(self._chat_template, self.model_id)
         self._stop_tokens = self._eog_tokens()
+        # Turn-end markers matched as STRINGS in the (special-rendered) output —
+        # the reliable backstop when a GGUF's eot token id is missing/wrong.
+        self._text_stops = (
+            "<end_of_turn>",
+            "<|im_end|>",
+            "<|eot_id|>",
+            "<|endoftext|>",
+            "<eos>",
+            "<|end|>",
+        )
         log.info(
             "loaded in %.1fs (dialect: %s, stop-tokens: %s)",
             time.time() - t0,
@@ -186,8 +196,12 @@ class LlamaCppEngine:
         max_tokens. Collect token_eos + token_eot (if exposed) + the ids of common
         turn-end strings, whichever the model actually defines."""
         stops: set[int] = set()
+        # token_eos/token_eot live on the low-level _LlamaModel, not the Llama
+        # wrapper — Gemma's turn-end <end_of_turn> is token_eot() there, not
+        # token_eos(); missing it is exactly what made generation run to max_tokens.
+        model = getattr(self._llm, "_model", None)
         for name in ("token_eos", "token_eot"):
-            fn = getattr(self._llm, name, None)
+            fn = getattr(model, name, None) or getattr(self._llm, name, None)
             if callable(fn):
                 try:
                     t = fn()
@@ -317,16 +331,22 @@ class LlamaCppEngine:
                         finish = "stop"
                         return
                     gen_ids.append(tok)
-                    whole = self._llm.detokenize(gen_ids).decode("utf-8", "replace")
+                    # special=True renders turn-end markers (<end_of_turn>, …) AS
+                    # TEXT so we can stop on the STRING — the reliable signal when a
+                    # GGUF's eot token id is wrong (Gemma here points eot at
+                    # <start_of_turn>). We trim the marker off the user output below.
+                    whole = self._llm.detokenize(gen_ids, special=True).decode("utf-8", "replace")
                     delta, text = whole[len(text) :], whole
                     tok_viz = self._token_viz(tok) if viz else None
-                    hit = next((s for s in stop_sequences if s and s in text), None)
+                    hit = next(
+                        (s for s in (*stop_sequences, *self._text_stops) if s and s in text), None
+                    )
                     if hit:
                         cut = text.index(hit)
                         tail = text[len(text) - len(delta) : cut]
                         if tail:
                             yield GenChunk(text=tail, viz=tok_viz)
-                        finish = "stop_sequence"
+                        finish = "stop"
                         return
                     elapsed = max(1e-3, time.time() - t0)
                     self.stats = {
