@@ -45,11 +45,32 @@ _memos: dict[str, dict[str, Any]] = {}
 
 
 def _resolve(model_id: str | None) -> EngineLike | None:
-    """The engine for a request's model: the registry loads/routes it; absent a
-    registry (injected-engine unit tests) fall back to the global engine."""
-    if REGISTRY is not None:
+    """The engine for a request's model. The registry routes/loads by id — but a
+    request's `model` is often a placeholder ("x") or simply doesn't match what's
+    loaded (e.g. the server was started from a local .gguf PATH, or the client
+    sends a default name). Only a DIFFERENT, repo-id-shaped model triggers an
+    actual load; anything else — and any load that fails — falls back to the
+    default resident model instead of 500-ing the request.
+
+    Absent a registry (injected-engine unit tests) fall back to the global engine.
+    """
+    if REGISTRY is None:
+        return engine
+    default = REGISTRY.default_model
+    # "/" gates a load attempt: repo ids (ns/name) and paths have one; a bare
+    # placeholder like "x" doesn't and must never be fetched as a model.
+    if not model_id or model_id == default or "/" not in model_id:
+        return REGISTRY.get(default)
+    try:
         return REGISTRY.get(model_id)
-    return engine
+    except Exception as exc:
+        log.warning(
+            "requested model %r not loadable (%s) — serving default %s",
+            model_id,
+            type(exc).__name__,
+            default,
+        )
+        return REGISTRY.get(default)
 
 
 def _memos_for(model_id: str | None) -> dict:

@@ -78,6 +78,29 @@ else
 fi
 uv tool update-shell 2>/dev/null || true
 
+# --- inference backend, per accelerator -----------------------------------
+# MLX (Apple) is the backend on Apple Silicon and ships via the bundle above. On
+# every other host the llama.cpp/GGUF backend is the engine, and it must be BUILT
+# for the detected GPU (a plain pip wheel is CPU-only — the A100 would sit idle).
+# scripts/install_deps owns that per-accelerator logic (cuda/rocm/cpu). Skip with
+# KAS_SKIP_BACKEND=1.
+case "$(uname -s)/$(uname -m)" in
+    Darwin/arm64) : ;;  # MLX is the backend here; llama.cpp is optional
+    *)
+        if [ "${KAS_SKIP_BACKEND:-}" != "1" ]; then
+            KAS_PY="$(uv tool dir 2>/dev/null)/kas/bin/python"
+            [ -x "$KAS_PY" ] || KAS_PY="$HOME/.local/share/uv/tools/kas/bin/python"
+            if [ -x "$KAS_PY" ]; then
+                say ""
+                say "setting up the llama.cpp/GGUF backend for your accelerator"
+                say "  (a CUDA/ROCm build COMPILES llama.cpp — a few minutes the first time)..."
+                "$KAS_PY" -m scripts.install_deps \
+                    || say "  backend setup failed — re-run later, or KAS_SKIP_BACKEND=1 to skip"
+            fi
+        fi
+        ;;
+esac
+
 say ""
 if command -v kas >/dev/null 2>&1; then
     say "OK: installed -> $(command -v kas) (+ kas-server)"
