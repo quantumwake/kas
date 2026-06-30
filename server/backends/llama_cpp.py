@@ -228,7 +228,15 @@ class LlamaCppEngine:
     ) -> list[int]:
         """Render the prompt via the GGUF's embedded chat template, then encode."""
         prompt = self._render_chat(chat_messages, tools, enable_thinking)
-        return self._llm.tokenize(prompt.encode("utf-8"), add_bos=False, special=True)
+        ids = self._llm.tokenize(prompt.encode("utf-8"), add_bos=False, special=True)
+        # Guarantee the BOS token. Many GGUFs leave `tokenizer.ggml.bos_token`
+        # (the STRING) empty — only the id is stored — so the chat template emits
+        # no <bos> and the model gets a head-less prompt -> garbage (this is what
+        # broke Gemma). Prepend the real BOS id if it isn't already there.
+        bos = self._llm.token_bos()
+        if isinstance(bos, int) and bos >= 0 and (not ids or ids[0] != bos):
+            ids = [bos, *ids]
+        return ids
 
     def _render_chat(self, messages, tools, enable_thinking) -> str:
         if self._chat_template:
