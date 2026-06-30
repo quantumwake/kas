@@ -13,13 +13,15 @@ rather than on the Apple-only dev box.
 Model resolution (model_id): a local *.gguf path, or a Hugging Face repo id —
 then the quant file is chosen by `--quant`/KAS_GGUF_QUANT (e.g. Q4_K_M), or an
 exact KAS_GGUF_FILE glob, or auto-picked (4-bit K-quants first), skipping
-mmproj/MTP files. GPU offload via KAS_GPU_LAYERS (-1 = all); context via KAS_CTX.
+mmproj/MTP files. GPU offload via KAS_GPU_LAYERS (-1 = all); context is sized to
+the model's trained length (KAS_CTX overrides, KAS_CTX_MAX caps for GPU memory).
 """
 
 import json
 import logging
 import os
 import pathlib
+import struct
 import threading
 import time
 from collections.abc import Iterator
@@ -29,6 +31,49 @@ from ..core.cache import longest_common_prefix
 from ..core.ports import GenChunk
 
 log = logging.getLogger("kas.llama_cpp")
+
+# GGUF scalar value-type byte sizes (the enum from the GGUF spec). Strings (8) and
+# arrays (9) are variable-length and handled separately.
+_GGUF_SCALAR = {0: 1, 1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 4, 7: 1, 10: 8, 11: 8, 12: 8}
+_GGUF_INT = {2: "<H", 3: "<h", 4: "<I", 5: "<i", 10: "<Q", 11: "<q"}
+
+
+def _gguf_meta_int(path: str, key_suffix: str) -> int:
+    """Read an integer metadata value (by key suffix, e.g. '.context_length')
+    straight from a GGUF file header — no model load, no context allocation. The
+    interesting keys (`<arch>.context_length`) sit before the big tokenizer arrays,
+    so this returns early and never parses them. 0 if absent/unreadable."""
+    try:
+        with open(path, "rb") as f:
+            if f.read(4) != b"GGUF":
+                return 0
+            struct.unpack("<I", f.read(4))  # version
+            struct.unpack("<Q", f.read(8))  # tensor count
+            (n_kv,) = struct.unpack("<Q", f.read(8))
+
+            def skip(t: int) -> None:
+                if t == 8:  # string
+                    (ln,) = struct.unpack("<Q", f.read(8))
+                    f.read(ln)
+                elif t == 9:  # array: elem-type, count, then elements
+                    (et,) = struct.unpack("<I", f.read(4))
+                    (cnt,) = struct.unpack("<Q", f.read(8))
+                    for _ in range(cnt):
+                        skip(et)
+                else:
+                    f.read(_GGUF_SCALAR.get(t, 0))
+
+            for _ in range(n_kv):
+                (klen,) = struct.unpack("<Q", f.read(8))
+                key = f.read(klen).decode("utf-8", "replace")
+                (vtype,) = struct.unpack("<I", f.read(4))
+                if key.endswith(key_suffix) and vtype in _GGUF_INT:
+                    (val,) = struct.unpack(_GGUF_INT[vtype], f.read(_GGUF_SCALAR[vtype]))
+                    return int(val)
+                skip(vtype)
+    except Exception as exc:
+        log.warning("GGUF metadata read failed for %s (%s)", path, exc)
+    return 0
 
 
 def _kv_paths(persist_dir: str, thread: str) -> tuple[pathlib.Path, pathlib.Path]:
@@ -148,22 +193,83 @@ class LlamaCppEngine:
         shards = [f for f in main if first_shard(f)]
         return min(shards, key=len) if shards else (glob or "*.gguf")
 
+    def _choose_ctx(self, src: dict) -> int:
+        """Size the context window to the model itself.
+
+        Precedence: explicit KAS_CTX wins; otherwise use the model's own trained
+        context length (`<arch>.context_length`, read straight from the GGUF header
+        — no weights, no KV allocated), capped by KAS_CTX_MAX so a 128k-context
+        model doesn't allocate a KV cache that OOMs the GPU. 8192 was far too small
+        for agentic coding: one long 'thinking' pass overran it and llama.cpp
+        raised 'llama_decode returned 1' (no free KV slot)."""
+        env = os.environ.get("KAS_CTX")
+        if env:
+            return int(env)
+        # Cap so a 256k/1M-context model doesn't try to allocate a KV cache that
+        # dwarfs the GPU. 16384 comfortably fits a 30B-class model on a 40GB card
+        # (a 31B + full-size SWA cache at 32768 does NOT) and is ample for agentic
+        # coding; _load backs off further if even this won't fit smaller hardware.
+        cap = int(os.environ.get("KAS_CTX_MAX", "16384"))
+        path = src.get("model_path")
+        if not path:  # HF repo -> resolve the (cached) local file to read its header
+            try:
+                from huggingface_hub import hf_hub_download
+
+                path = hf_hub_download(repo_id=src["repo_id"], filename=src["filename"])
+            except Exception as exc:
+                log.warning("could not resolve GGUF for ctx peek (%s); using cap %d", exc, cap)
+                path = None
+        trained = _gguf_meta_int(path, ".context_length") if path else 0
+        n = min(trained, cap) if trained else cap
+        log.info("context: model trained=%s, cap=%s -> n_ctx=%s", trained or "?", cap, n)
+        return n
+
     def _load(self, model_id: str) -> None:
         from ..prompting import detect_dialect
 
         n_gpu_layers = int(os.environ.get("KAS_GPU_LAYERS", "-1"))  # -1 = offload all
-        n_ctx = int(os.environ.get("KAS_CTX", "8192"))
-        t0 = time.time()
-        log.info("loading %s (n_gpu_layers=%s, n_ctx=%s) ...", model_id, n_gpu_layers, n_ctx)
-        common = dict(n_gpu_layers=n_gpu_layers, n_ctx=n_ctx, verbose=False)
+        # Resolve the GGUF source first (local path vs HF repo+file) so the context
+        # window can be sized to *this* model rather than a magic constant.
         if model_id.endswith(".gguf") and os.path.exists(model_id):
-            self._llm = self._Llama(model_path=model_id, **common)
+            src = dict(model_path=model_id)
+            ctor = self._Llama
         else:  # Hugging Face repo id -> pick the quant file
             filename = self._pick_gguf_file(
                 model_id, os.environ.get("KAS_GGUF_FILE"), os.environ.get("KAS_GGUF_QUANT")
             )
             log.info("selected GGUF file: %s", filename)
-            self._llm = self._Llama.from_pretrained(repo_id=model_id, filename=filename, **common)
+            src = dict(repo_id=model_id, filename=filename)
+            ctor = self._Llama.from_pretrained
+        n_ctx = self._choose_ctx(src)
+        # Flash Attention is a big win for the GGUF backend, and load-critical for
+        # sliding-window models: gemma's interleaved-SWA layers have V embeddings of
+        # different sizes, and WITHOUT FA llama.cpp pads every V cache to 4096 —
+        # ballooning the KV until 'Failed to create llama_context' even on a clean
+        # 40GB GPU. FA removes the padding (and speeds attention). On by default;
+        # KAS_FLASH_ATTN=0 opts out for the rare build/quant that can't do it.
+        flash_attn = os.environ.get("KAS_FLASH_ATTN", "1") not in ("0", "false", "False")
+        t0 = time.time()
+        # Allocating the KV at n_ctx can still exceed VRAM on smaller cards (or for
+        # an unusually large model). Rather than hard-fail, back off — halve the
+        # context and retry down to a floor — so kas loads with the largest window
+        # the GPU can actually hold instead of refusing to start.
+        floor = 2048
+        while True:
+            log.info(
+                "loading %s (n_gpu_layers=%s, n_ctx=%s, flash_attn=%s) ...",
+                model_id, n_gpu_layers, n_ctx, flash_attn,
+            )
+            try:
+                self._llm = ctor(
+                    **src, n_gpu_layers=n_gpu_layers, n_ctx=n_ctx,
+                    flash_attn=flash_attn, verbose=False,
+                )
+                break
+            except (ValueError, RuntimeError, MemoryError) as exc:
+                if n_ctx <= floor:
+                    raise
+                n_ctx = max(floor, n_ctx // 2)
+                log.warning("context alloc failed (%s); backing off to n_ctx=%s", exc, n_ctx)
         self.model_id = model_id
         self._cached_tokens = []  # a (re)load invalidates any prior KV
         meta = getattr(self._llm, "metadata", {}) or {}
@@ -370,27 +476,38 @@ class LlamaCppEngine:
                         finish = "length"
                         return
 
-            # KV prefix-reuse across turns can desync llama.cpp and surface as
-            # 'llama_decode returned -1' on the prompt eval (before any token). If
-            # that happens with nothing emitted yet, clear the KV and re-prefill
-            # cold — a slower but reliable turn beats a broken one.
+            # llama.cpp decode failures split two ways, by whether we'd streamed
+            # anything yet:
+            #   * MID-GENERATION ('returned 1' = no free KV slot): the context
+            #     filled — almost always a long agentic 'thinking' pass. Don't 500
+            #     the turn; end it cleanly with what we have (finish='length') so
+            #     the user can just continue — the next turn re-prefills with room.
+            #   * ON PREFILL (before any token, typically 'returned -1'): KV
+            #     prefix-reuse desynced. Clear the KV and re-prefill cold — a slower
+            #     but reliable turn beats a broken one.
             yielded = False
             try:
                 for chunk in _drive(reset=(cached == 0)):
                     yielded = True
                     yield chunk
             except RuntimeError as exc:
-                if yielded or "llama_decode" not in str(exc):
+                if "llama_decode" not in str(exc):
                     raise
-                log.warning("llama_decode failed; clearing KV, retrying cold (%s)", exc)
-                gen_ids.clear()
-                text, finish, cached = "", "length", 0
-                try:
-                    self._llm.reset()
-                except Exception:
-                    pass
-                for chunk in _drive(reset=True):
-                    yield chunk
+                if yielded:
+                    log.warning("llama_decode failed mid-generation (KV full?); "
+                                "ending turn early — continue to resume (%s)", exc)
+                    finish = "length"
+                else:
+                    log.warning("llama_decode failed on prefill; clearing KV, "
+                                "retrying cold (%s)", exc)
+                    gen_ids.clear()
+                    text, finish, cached = "", "length", 0
+                    try:
+                        self._llm.reset()
+                    except Exception:
+                        pass
+                    for chunk in _drive(reset=True):
+                        yield chunk
             self.stats = {"active": False}
             # The cache now holds the prompt + every generated token except the
             # last (never fed back) — mirrors the MLX backend's accounting.
