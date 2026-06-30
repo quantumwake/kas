@@ -140,6 +140,9 @@ def serve_main(argv: list[str]) -> None:
     ap.add_argument("--port", type=int, default=int(os.environ.get("KAS_PORT", "8765")))
     ap.add_argument("--model", default=None, help="model repo to load")
     ap.add_argument(
+        "--quant", default=None, help="GGUF quant to load (e.g. Q4_K_M); else auto-picked"
+    )
+    ap.add_argument(
         "--daemon",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -196,6 +199,8 @@ def serve_main(argv: list[str]) -> None:
 
     if a.model:
         os.environ["KAS_MODEL"] = a.model
+    if a.quant:  # forwarded to the spawned server via env (see _spawn_server)
+        os.environ["KAS_GGUF_QUANT"] = a.quant
 
     if not a.daemon:  # foreground: become the server (the kas-server process)
         from server import cli as server_cli

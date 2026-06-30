@@ -10,9 +10,10 @@ kept standard + best-effort (any KV failure falls back to a cold prefill, never 
 broken turn); the runtime path is validated on CPU CI + GPU CI (Modal/RunPod)
 rather than on the Apple-only dev box.
 
-Model resolution (model_id): a local *.gguf path, or a Hugging Face repo id (then
-KAS_GGUF_FILE selects the quant file, default '*Q4_K_M.gguf'). GPU offload via
-KAS_GPU_LAYERS (-1 = all layers, the default); context via KAS_CTX.
+Model resolution (model_id): a local *.gguf path, or a Hugging Face repo id —
+then the quant file is chosen by `--quant`/KAS_GGUF_QUANT (e.g. Q4_K_M), or an
+exact KAS_GGUF_FILE glob, or auto-picked (4-bit K-quants first), skipping
+mmproj/MTP files. GPU offload via KAS_GPU_LAYERS (-1 = all); context via KAS_CTX.
 """
 
 import json
@@ -73,6 +74,80 @@ class LlamaCppEngine:
 
     # --- loading -------------------------------------------------------------
 
+    @staticmethod
+    def _pick_gguf_file(repo_id: str, glob: str | None, quant: str | None) -> str:
+        """Choose a GGUF file from a multi-quant repo. Quant naming is wildly
+        inconsistent (UD-Q4_K_M, Q4_K_XL, IQ4_XS, split shards, plus mmproj/MTP
+        files mixed in), so a fixed glob fails. Precedence:
+          1. KAS_GGUF_FILE — an exact filename/glob (power users, split BF16, …)
+          2. `quant` (--quant / KAS_GGUF_QUANT) — a quant name like Q4_K_M; picks
+             the file carrying it (case-insensitive), first shard.
+          3. a sensible default preference order (4-bit K-quants first).
+        Non-main files (mmproj vision projectors, MTP drafts) are excluded.
+        """
+        import fnmatch
+        import re
+
+        try:
+            from huggingface_hub import HfApi
+
+            files = [f for f in HfApi().list_repo_files(repo_id) if f.endswith(".gguf")]
+        except Exception:
+            return glob or (f"*{quant}*.gguf" if quant else "*Q4_K_M*.gguf")
+        # drop vision projectors (mmproj) and multi-token-prediction draft files
+        main = [f for f in files if not re.search(r"mmproj|mtp|-MTP\b", f, re.I)] or files
+
+        def first_shard(f: str) -> bool:  # for split GGUF, take part 1 only
+            m = re.search(r"(\d+)-of-\d+", f)
+            return not m or int(m.group(1)) == 1
+
+        if glob:  # 1. exact override
+            hit = [f for f in main if fnmatch.fnmatch(f.rsplit("/", 1)[-1], glob)]
+            if hit:
+                return min(hit, key=len)
+        if quant:  # 2. by quant name
+            hit = [f for f in main if quant.lower() in f.lower() and first_shard(f)]
+            if hit:
+                return min(hit, key=len)
+            log.warning("quant %r not in %s; falling back to default preference", quant, repo_id)
+        # auto-picking: surface the options so the user can re-run with --quant.
+        seen = {
+            m.group(0)
+            for f in main
+            for m in [re.search(r"I?Q\d+(?:_[A-Z0-9]+)*|F16|BF16", f.rsplit("/", 1)[-1], re.I)]
+            if m
+        }
+        if len(seen) > 1:
+            log.info("quants in %s: %s  (pick one with --quant)", repo_id, ", ".join(sorted(seen)))
+        # 3. default order — 4-bit K-quants first (agent sweet spot), then up/down
+        order = [
+            "Q4_K_M",
+            "Q4_K_S",
+            "Q4_K_XL",
+            "Q4_K",
+            "Q4_0",
+            "IQ4_XS",
+            "IQ4_NL",
+            "Q5_K_M",
+            "Q5_K_S",
+            "Q5_K",
+            "Q6_K",
+            "Q8_0",
+            "Q3_K_M",
+            "Q3_K",
+            "Q2_K",
+            "IQ3",
+            "IQ2",
+            "F16",
+            "BF16",
+        ]
+        for q in order:
+            cands = [f for f in main if q.lower() in f.lower() and first_shard(f)]
+            if cands:
+                return min(cands, key=len)  # shortest name = least extra tagging
+        shards = [f for f in main if first_shard(f)]
+        return min(shards, key=len) if shards else (glob or "*.gguf")
+
     def _load(self, model_id: str) -> None:
         from ..prompting import detect_dialect
 
@@ -84,11 +159,11 @@ class LlamaCppEngine:
         if model_id.endswith(".gguf") and os.path.exists(model_id):
             self._llm = self._Llama(model_path=model_id, **common)
         else:  # Hugging Face repo id -> pick the quant file
-            self._llm = self._Llama.from_pretrained(
-                repo_id=model_id,
-                filename=os.environ.get("KAS_GGUF_FILE", "*Q4_K_M.gguf"),
-                **common,
+            filename = self._pick_gguf_file(
+                model_id, os.environ.get("KAS_GGUF_FILE"), os.environ.get("KAS_GGUF_QUANT")
             )
+            log.info("selected GGUF file: %s", filename)
+            self._llm = self._Llama.from_pretrained(repo_id=model_id, filename=filename, **common)
         self.model_id = model_id
         self._cached_tokens = []  # a (re)load invalidates any prior KV
         meta = getattr(self._llm, "metadata", {}) or {}
@@ -193,44 +268,71 @@ class LlamaCppEngine:
             # transcripts share a long head): reset only when nothing overlaps, so
             # llama.cpp re-evals just the new suffix instead of the whole prompt.
             cached = longest_common_prefix(self._cached_tokens, full)
-            stream = self._llm.generate(
-                full,
-                temp=0.0 if temperature is None else float(temperature),
-                top_p=1.0 if top_p is None else float(top_p),
-                reset=(cached == 0),
-            )
-            for tok in stream:
-                if self._cancel.is_set():
-                    finish = "stop"
-                    break
-                if tok == eos:
-                    finish = "stop"
-                    break
-                gen_ids.append(tok)
-                whole = self._llm.detokenize(gen_ids).decode("utf-8", "replace")
-                delta, text = whole[len(text) :], whole
-                tok_viz = self._token_viz(tok) if viz else None
-                hit = next((s for s in stop_sequences if s and s in text), None)
-                if hit:
-                    cut = text.index(hit)
-                    tail = text[len(text) - len(delta) : cut]
-                    if tail:
-                        yield GenChunk(text=tail, viz=tok_viz)
-                    finish = "stop_sequence"
-                    break
-                elapsed = max(1e-3, time.time() - t0)
-                self.stats = {
-                    "active": True,
-                    "phase": "generating",
-                    "tps": round(len(gen_ids) / elapsed, 1),
-                    "processed": len(gen_ids),
-                    "total": max_tokens,
-                }
-                if delta:
-                    yield GenChunk(text=delta, viz=tok_viz)
-                if len(gen_ids) >= max_tokens:
-                    finish = "length"
-                    break
+
+            def _drive(reset: bool):
+                """Drive llama.cpp, yielding text-delta GenChunks. Raises on a
+                llama.cpp decode error so the caller can retry from a clean KV."""
+                nonlocal text, finish
+                stream = self._llm.generate(
+                    full,
+                    temp=0.0 if temperature is None else float(temperature),
+                    top_p=1.0 if top_p is None else float(top_p),
+                    reset=reset,
+                )
+                for tok in stream:
+                    if self._cancel.is_set():
+                        finish = "stop"
+                        return
+                    if tok == eos:
+                        finish = "stop"
+                        return
+                    gen_ids.append(tok)
+                    whole = self._llm.detokenize(gen_ids).decode("utf-8", "replace")
+                    delta, text = whole[len(text) :], whole
+                    tok_viz = self._token_viz(tok) if viz else None
+                    hit = next((s for s in stop_sequences if s and s in text), None)
+                    if hit:
+                        cut = text.index(hit)
+                        tail = text[len(text) - len(delta) : cut]
+                        if tail:
+                            yield GenChunk(text=tail, viz=tok_viz)
+                        finish = "stop_sequence"
+                        return
+                    elapsed = max(1e-3, time.time() - t0)
+                    self.stats = {
+                        "active": True,
+                        "phase": "generating",
+                        "tps": round(len(gen_ids) / elapsed, 1),
+                        "processed": len(gen_ids),
+                        "total": max_tokens,
+                    }
+                    if delta:
+                        yield GenChunk(text=delta, viz=tok_viz)
+                    if len(gen_ids) >= max_tokens:
+                        finish = "length"
+                        return
+
+            # KV prefix-reuse across turns can desync llama.cpp and surface as
+            # 'llama_decode returned -1' on the prompt eval (before any token). If
+            # that happens with nothing emitted yet, clear the KV and re-prefill
+            # cold — a slower but reliable turn beats a broken one.
+            yielded = False
+            try:
+                for chunk in _drive(reset=(cached == 0)):
+                    yielded = True
+                    yield chunk
+            except RuntimeError as exc:
+                if yielded or "llama_decode" not in str(exc):
+                    raise
+                log.warning("llama_decode failed; clearing KV, retrying cold (%s)", exc)
+                gen_ids.clear()
+                text, finish, cached = "", "length", 0
+                try:
+                    self._llm.reset()
+                except Exception:
+                    pass
+                for chunk in _drive(reset=True):
+                    yield chunk
             self.stats = {"active": False}
             # The cache now holds the prompt + every generated token except the
             # last (never fed back) — mirrors the MLX backend's accounting.

@@ -30,6 +30,9 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=int(os.environ.get("KAS_PORT", "8765")))
     ap.add_argument("--host", default=os.environ.get("KAS_HOST", "127.0.0.1"))
     ap.add_argument("--model", default=None, help="model repo to load")
+    ap.add_argument(
+        "--quant", default=None, help="GGUF quant to load (e.g. Q4_K_M); else auto-picked"
+    )
     a = ap.parse_args()
 
     # Preflight: refuse to start onto an occupied port. Without this the bind
@@ -47,6 +50,8 @@ def main() -> None:
 
     if a.model:
         os.environ["KAS_MODEL"] = a.model
+    if a.quant:
+        os.environ["KAS_GGUF_QUANT"] = a.quant
     os.environ["KAS_PORT"] = str(a.port)
     uvicorn.run("server.app:app", host=a.host, port=a.port)
 
