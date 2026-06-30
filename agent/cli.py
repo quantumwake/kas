@@ -9,6 +9,7 @@ task, the TUI, or the plain REPL.
 import argparse
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import time
@@ -53,21 +54,52 @@ def _spawn_server(port: int, model: str | None = None) -> subprocess.Popen:
     return proc
 
 
-def _wait_for_server(base: str, proc: subprocess.Popen, attempts: int = 180) -> bool:
-    """Poll base/v1/models until it answers; False if the process dies or times out.
+def _log_tail(logf) -> str:
+    """The latest non-empty progress fragment from the daemon log. HF download
+    bars use carriage returns, so split on both CR and LF and take the last
+    fragment — that's the live download %/speed or the current load message."""
+    try:
+        data = pathlib.Path(logf).read_bytes()[-4096:].decode("utf-8", "replace")
+    except Exception:
+        return ""
+    frags = [f.strip() for f in re.split(r"[\r\n]+", data) if f.strip()]
+    return frags[-1] if frags else ""
+
+
+def _wait_for_server(base: str, proc: subprocess.Popen, logf=None, stall_polls: int = 120) -> bool:
+    """Poll base/v1/models until it answers; False if the process dies or stalls.
+
+    Surfaces the daemon log tail while waiting, so a multi-GB model DOWNLOAD/load
+    shows live progress instead of a frozen "loading model…" prompt. Gives up only
+    after `stall_polls` consecutive polls with NO log change and no response (a hung
+    start) — so a slow-but-progressing download waits as long as it needs.
 
     The liveness check comes BEFORE the probe each iteration: if our child exited
     (e.g. it hit an occupied port and the preflight aborted it), an unrelated
     server still answering on `base` must not be mistaken for ours."""
-    for _ in range(attempts):
+    last, stall = "", 0
+    while True:
         if proc.poll() is not None:  # our child died — don't be fooled by an orphan
+            if last:
+                print()
             return False
         try:
             httpx.get(base + "/v1/models", timeout=1)
+            if last:
+                print()  # close out the in-place progress line
             return True
         except Exception:
+            line = _log_tail(logf) if logf else ""
+            if line and line != last:
+                print("\r  " + line[:110].ljust(len(last)), end="", flush=True)
+                last, stall = line, 0
+            else:
+                stall += 1
+                if stall >= stall_polls:
+                    if last:
+                        print()
+                    return False
             time.sleep(2)
-    return False
 
 
 def _is_local_url(url: str) -> bool:
@@ -216,7 +248,7 @@ def serve_main(argv: list[str]) -> None:
     # daemonize: spawn the SEPARATE kas-server process, detached, then wait.
     proc = _spawn_server(a.port)
     print(f"starting kas server (pid {proc.pid}) on {base} — loading model…")
-    if _wait_for_server(base, proc):
+    if _wait_for_server(base, proc, logf):
         print(f"ready: {base}  (logs: kas serve --logs · stop: kas serve --stop)")
     else:
         print(f"server exited early or slow to start — see {logf} (kas serve --logs)")
