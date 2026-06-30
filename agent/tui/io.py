@@ -35,6 +35,8 @@ class TuiIO:
         self._hline: Text | None = None  # /viz heatmap: per-token coloured line
         self._kind = "text"
         self._think = ""  # MDUI: in-flight thinking line
+        self._think_text = ""  # plain mode: full in-flight reasoning -> bounded pane
+        self._think_active = False  # plain mode: the live thinking pane is showing
         self._answer = ""  # MDUI: accumulated answer text -> Markdown at block end
         self._t0 = 0.0
         self._ttft: float | None = None
@@ -116,12 +118,36 @@ class TuiIO:
             self._flush_think()
             self._render_answer()
         else:
+            self._end_thinking()
             self._flush_line()
 
     # ---- interface called by core.agent_turn (agent thread) ----
 
+    def _push_thinking(self, text: str) -> None:
+        """Accumulate reasoning and show its last few lines live in the bounded
+        thinking pane — observable work, without the whole chain of thought
+        scrolling the transcript."""
+        self._think_text += text
+        self._think_active = True
+        lines = [ln for ln in self._think_text.splitlines() if ln.strip()]
+        self._ui(self.app.update_thinking, lines)
+
+    def _end_thinking(self) -> None:
+        """Collapse the live pane when reasoning ends, leaving a one-line marker in
+        the transcript (the full reasoning stays in message history). No-op if no
+        thinking pane is currently showing."""
+        if not self._think_active:
+            return
+        n = len([ln for ln in self._think_text.splitlines() if ln.strip()])
+        if n:
+            self._write(f"💭 thought ({n} lines)", "dim")
+        self._think_text = ""
+        self._think_active = False
+        self._ui(self.app.hide_thinking)
+
     def stream_started(self) -> None:
         self._t0, self._ttft = time.time(), None
+        self._think_text, self._think_active = "", False
 
     def delta(self, kind: str, text: str, viz: dict | None = None) -> None:
         if self._ttft is None:
@@ -134,13 +160,19 @@ class TuiIO:
                 return
         if not self._md_on():
             # default plain mode (known-good): stream line-by-line
+            if kind == "thinking":
+                # reasoning goes to a small bounded live pane (watch it work),
+                # NOT scrolled line-by-line into the transcript
+                self._push_thinking(text)
+                return
+            self._end_thinking()  # answer/tool starting -> collapse the pane
             if kind != self._kind:
                 self._flush_line()
                 self._kind = kind
             self._line += text
             while "\n" in self._line:
                 line, self._line = self._line.split("\n", 1)
-                self._write(line, "dim italic" if kind == "thinking" else "")
+                self._write(line, "")
             return
         # MDUI: stream thinking live (dim); buffer answer text for Markdown
         self._agent_header()

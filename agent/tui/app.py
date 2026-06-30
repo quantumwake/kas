@@ -78,6 +78,10 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
         color: $foreground; padding: 0 1; display: none;
     }
     #body { height: 1fr; padding: 0 1; background: $background; color: $foreground; }
+    #thinking {
+        height: 4; padding: 0 1; background: $surface;
+        color: $foreground; display: none;
+    }
     #status { height: 1; background: $surface; color: $accent; padding: 0 1; }
     #fx { height: 1; background: $background; color: $foreground; padding: 0 1; }
     Input { dock: bottom; background: $surface; color: $foreground; border: none; }
@@ -192,6 +196,7 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
         body_cls = SelectableRichLog if self._mouse_select else RichLog
         yield body_cls(id="body", wrap=True, markup=False, highlight=False, auto_scroll=True)
         yield Static("", id="vizpanel")  # /viz top-k + entropy, docked (hidden by default)
+        yield Static("", id="thinking")  # live reasoning pane (shown only while thinking)
         yield Static("", id="status")
         yield FxBar()
         yield PasteInput(
@@ -527,6 +532,23 @@ class AgentApp(CommandHandler, StatsPanel, WorkerLoops, App):
 
     def hide_viz_panel(self) -> None:
         self.query_one("#vizpanel", Static).display = False
+
+    def update_thinking(self, lines) -> None:
+        """Show the model's in-flight reasoning in a small bounded pane (its last
+        few lines), so you can watch it actually work — instead of the chain of
+        thought either flooding the transcript or being invisible behind a tok/s
+        counter. Collapsed to a one-line marker by hide_thinking when reasoning ends."""
+        body = "\n".join(lines[-3:])
+        t = Text("💭 thinking…\n", style="dim")
+        t.append(body, style="dim italic")
+        pane = self.query_one("#thinking", Static)
+        pane.update(t)
+        pane.display = True
+
+    def hide_thinking(self) -> None:
+        pane = self.query_one("#thinking", Static)
+        pane.update("")
+        pane.display = False
 
     def body_write(self, renderable) -> None:
         log = self.query_one("#body", RichLog)
