@@ -171,7 +171,38 @@ class LlamaCppEngine:
         self.context_length = int(getattr(self._llm, "n_ctx", lambda: n_ctx)())
         self.n_layers = n_gpu_layers if n_gpu_layers >= 0 else None
         self.dialect = detect_dialect(self._chat_template, self.model_id)
-        log.info("loaded in %.1fs (dialect: %s)", time.time() - t0, self.dialect.name)
+        self._stop_tokens = self._eog_tokens()
+        log.info(
+            "loaded in %.1fs (dialect: %s, stop-tokens: %s)",
+            time.time() - t0,
+            self.dialect.name,
+            sorted(self._stop_tokens),
+        )
+
+    def _eog_tokens(self) -> set[int]:
+        """End-of-generation token ids. token_eos() alone isn't enough: a turn
+        ends on a DIFFERENT token in most chat models (Gemma <end_of_turn>, ChatML
+        <|im_end|>, Llama <|eot_id|>), so generation would otherwise run to
+        max_tokens. Collect token_eos + token_eot (if exposed) + the ids of common
+        turn-end strings, whichever the model actually defines."""
+        stops: set[int] = set()
+        for name in ("token_eos", "token_eot"):
+            fn = getattr(self._llm, name, None)
+            if callable(fn):
+                try:
+                    t = fn()
+                    if isinstance(t, int) and t >= 0:
+                        stops.add(t)
+                except Exception:
+                    pass
+        for marker in ("<end_of_turn>", "<|im_end|>", "<|eot_id|>", "<|end|>"):
+            try:
+                ids = self._llm.tokenize(marker.encode("utf-8"), add_bos=False, special=True)
+                if len(ids) == 1 and ids[0] >= 0:  # a real single special token
+                    stops.add(ids[0])
+            except Exception:
+                pass
+        return stops or {self._llm.token_eos()}
 
     # --- tokenization --------------------------------------------------------
 
@@ -258,7 +289,6 @@ class LlamaCppEngine:
     ) -> Iterator[GenChunk]:
         with self._lock:
             self._cancel.clear()
-            eos = self._llm.token_eos()
             t0 = time.time()
             gen_ids: list[int] = []
             text = ""
@@ -283,7 +313,7 @@ class LlamaCppEngine:
                     if self._cancel.is_set():
                         finish = "stop"
                         return
-                    if tok == eos:
+                    if tok in self._stop_tokens:  # eos / eot / <end_of_turn> / …
                         finish = "stop"
                         return
                     gen_ids.append(tok)
