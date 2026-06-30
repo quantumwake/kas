@@ -26,19 +26,19 @@ wheel, ~10 s). Optional features (voice, vision, image-gen, web) install via
 ## Quick start
 
 ```sh
-kas serve          # start the inference server (loads the default model)
-kas                # launch the agent TUI
+# 1. start the server — the FIRST run downloads the model (progress is shown)
+kas serve --model mlx-community/Qwen3.6-27B-4bit          # Apple Silicon (MLX)
+#   …or on NVIDIA:   kas serve --model unsloth/Qwen3.6-27B-MTP-GGUF
 
-# pick an MLX model explicitly (Apple Silicon):
-kas serve --model mlx-community/Qwen3.6-27B-4bit         # default · dense
-kas serve --model mlx-community/Qwen3.6-35B-A3B-4bit     # MoE · ~4x faster decode
+kas                # 2. launch the agent TUI
 
 kas --yolo "build me an asteroids game in ./game, then run it"   # one-shot
 ```
 
-If no server is up, `kas` offers to start one and pick a model. Manage the
-daemon with `kas serve --status | --stop | --logs`. The agent alone is portable —
-point it anywhere with `kas --base-url http://host:port`.
+A 27B 4-bit model is ~15 GB on first download. Once you have models, bare
+`kas serve` loads the default and `kas` offers to start one and pick from what's
+downloaded. Manage the daemon with `kas serve --status | --stop | --logs`. The
+agent alone is portable — point it anywhere with `kas --base-url http://host:port`.
 
 ## NVIDIA / GGUF
 
